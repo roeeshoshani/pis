@@ -1,8 +1,7 @@
 use std::path::StripPrefixError;
 
-use crate::{Insn, Opcode, Operand, OperandAddr, OperandSize, OperandSpace, Translation};
+use crate::{ArchCtx, Insn, Opcode, Operand, OperandAddr, OperandSize, OperandSpace, Translation};
 use bitpiece::{bitpiece, BitPiece, BitStorage};
-use paste::paste;
 use strum::{EnumIter, IntoEnumIterator};
 
 macro_rules! define_reg_operand {
@@ -19,42 +18,39 @@ macro_rules! define_reg_operand {
 }
 
 macro_rules! define_reg_operands_single {
-    {$size: literal, $prev_name: ident, $name: ident} => {
-        paste! {
-            define_reg_operand! {$name, $prev_name.addr.offset + $size, [<B $size>]}
-        }
+    {$step_size: literal, $size: ident, $prev_name: ident, $name: ident} => {
+        define_reg_operand! {$name, $prev_name.addr.offset + $step_size, $size}
     };
 }
 
 macro_rules! define_reg_operands_inner {
     // the case for the last operand
-    {$size: literal, $prev_name: ident, $name: ident} => {
-        define_reg_operands_single!{$size, $prev_name, $name}
+    {$step_size: literal, $size: ident, $prev_name: ident, $name: ident} => {
+        define_reg_operands_single!{$step_size, $size, $prev_name, $name}
     };
 
     // the common case of the non-last operand
-    {$size: literal, $prev_name: ident, $name: ident, $($names: ident),+} => {
+    {$step_size: literal, $size: ident, $prev_name: ident, $name: ident, $($names: ident),+} => {
         // define the current operand
-        define_reg_operands_inner! {$size, $prev_name, $name}
+        define_reg_operands_inner! {$step_size, $size, $prev_name, $name}
 
         // define the rest of the operands
-        define_reg_operands_inner! {$size, $name, $($names),+}
+        define_reg_operands_inner! {$step_size, $size, $name, $($names),+}
     };
 }
 
 macro_rules! define_reg_operands {
-    {$size: literal, $first_name: ident, $($name: ident),+} => {
+    {$step_size: literal, $size: ident, $first_name: ident, $($name: ident),+} => {
         // define the first operand with offset 0
-        paste! {
-            define_reg_operand! {$first_name, 0, [<B $size>]}
-        }
+        define_reg_operand! {$first_name, 0, $size}
 
         // define the rest of the operands following it
-        define_reg_operands_inner! {$size, $first_name, $($name),+}
+        define_reg_operands_inner! {$step_size, $size, $first_name, $($name),+}
     };
 }
 
-define_reg_operands! {8, RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI}
+define_reg_operands! {8, B8, RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI}
+define_reg_operands! {8, B1, AL, CL, DL, BL, SPL, BPL, SIL, DIL}
 
 #[bitpiece(3)]
 #[derive(Debug, Clone, Copy)]
@@ -151,19 +147,6 @@ impl InsnLegacyPrefixes {
     }
 }
 
-fn translate_push_reg(reg: Reg) -> Translation {
-    let mut translation = Translation::new();
-    translation.insns.push(Insn::new(
-        Opcode::Add,
-        RSP,
-        Operand::negative_constant(8, OperandSize::B8),
-    ));
-    translation
-        .insns
-        .push(Insn::new(Opcode::Store, RSP, reg.operand(OperandSize::B8)));
-    translation
-}
-
 fn extract_legacy_prefixes(code: &mut &[u8]) -> InsnLegacyPrefixes {
     let mut prefixes = InsnLegacyPrefixes {
         by_group: [None; LegacyPrefixGroup::GROUPS_AMOUNT],
@@ -184,11 +167,190 @@ fn extract_legacy_prefixes(code: &mut &[u8]) -> InsnLegacyPrefixes {
     prefixes
 }
 
-pub fn translate(mut code: &[u8]) -> Translation {
-    let legacy_prefixes = extract_legacy_prefixes(&mut code);
-    println!("prefixes: {:?}", legacy_prefixes);
-    if code.len() == 1 && code[0] >= 0x50 && code[0] <= 0x50 + Reg::MAX_VALUE as u8 {
-        return translate_push_reg(Reg::from_bits(code[0] - 0x50));
+#[bitpiece(4)]
+#[derive(Debug, Clone, Copy)]
+pub struct RexPrefix {
+    pub w_bit: bool,
+    pub r_bit: bool,
+    pub x_bit: bool,
+    pub b_bit: bool,
+}
+
+#[derive(Debug)]
+pub struct InsnPrefixes {
+    pub legacy: InsnLegacyPrefixes,
+    pub rex: Option<RexPrefix>,
+}
+
+fn extract_rex_prefix(code: &mut &[u8]) -> Option<RexPrefix> {
+    if code[0] & 0xf0 == 0b0100_0000 {
+        let rex_prefix = RexPrefix::from_bits(code[0] & 0xf);
+
+        // skip the rex byte
+        *code = &code[1..];
+
+        Some(rex_prefix)
+    } else {
+        None
     }
-    todo!()
+}
+
+fn extract_prefixes(code: &mut &[u8]) -> InsnPrefixes {
+    let legacy = extract_legacy_prefixes(code);
+    let rex = extract_rex_prefix(code);
+    InsnPrefixes { legacy, rex }
+}
+
+pub enum X86CpuMode {
+    RealMode,
+    ProtectedMode,
+    LongMode,
+}
+
+pub enum X86SegmentDefaultOperandSize {
+    /// 16 bit segment
+    B16,
+    /// 32 bit segment
+    B32,
+}
+
+/// contextual information about a translation after parsing the instruction's prefixes.
+struct PostPrefixesCtx {
+    operand_size: OperandSize,
+    address_size: OperandSize,
+    prefixes: InsnPrefixes,
+}
+
+pub struct X86Ctx {
+    /// the cpu mode in which we are executing.
+    pub cpu_mode: X86CpuMode,
+    /// the code segment's default operand size, determined by the `D` flag in the code segment descriptor.
+    pub code_segment_default_operand_size: X86SegmentDefaultOperandSize,
+}
+impl X86Ctx {
+    fn stack_width(&self) -> OperandSize {
+        match self.cpu_mode {
+            X86CpuMode::RealMode => OperandSize::B2,
+            X86CpuMode::ProtectedMode => OperandSize::B4,
+            X86CpuMode::LongMode => OperandSize::B8,
+        }
+    }
+    fn stack_pointer_operand_of_size(&self, size: OperandSize) -> Operand {
+        match size {
+            OperandSize::B1 => todo!(),
+            OperandSize::B2 => todo!(),
+            OperandSize::B4 => todo!(),
+            OperandSize::B8 => todo!(),
+        }
+    }
+    fn translate_push_reg(&self, reg: Reg, ctx: PostPrefixesCtx) -> Translation {
+        let mut translation = Translation::new();
+        translation.insns.push(Insn::new(
+            Opcode::Add,
+            RSP,
+            Operand::negative_constant(8, OperandSize::B8),
+        ));
+        translation
+            .insns
+            .push(Insn::new(Opcode::Store, RSP, reg.operand(OperandSize::B8)));
+        translation
+    }
+
+    fn resolve_operand_size(&self, prefixes: &InsnPrefixes) -> OperandSize {
+        match self.cpu_mode {
+            X86CpuMode::RealMode => {
+                if prefixes.legacy.contains(LegacyPrefix::OperandSizeOverride) {
+                    OperandSize::B4
+                } else {
+                    OperandSize::B2
+                }
+            }
+            X86CpuMode::ProtectedMode => match self.code_segment_default_operand_size {
+                X86SegmentDefaultOperandSize::B16 => {
+                    if prefixes.legacy.contains(LegacyPrefix::OperandSizeOverride) {
+                        OperandSize::B4
+                    } else {
+                        OperandSize::B2
+                    }
+                }
+                X86SegmentDefaultOperandSize::B32 => {
+                    if prefixes.legacy.contains(LegacyPrefix::OperandSizeOverride) {
+                        OperandSize::B2
+                    } else {
+                        OperandSize::B4
+                    }
+                }
+            },
+            X86CpuMode::LongMode => match prefixes.rex {
+                Some(rex_prefix) if rex_prefix.w_bit() => OperandSize::B8,
+                _ => {
+                    if prefixes.legacy.contains(LegacyPrefix::OperandSizeOverride) {
+                        OperandSize::B2
+                    } else {
+                        OperandSize::B4
+                    }
+                }
+            },
+        }
+    }
+
+    fn resolve_address_size(&self, prefixes: &InsnPrefixes) -> OperandSize {
+        match self.cpu_mode {
+            X86CpuMode::RealMode => {
+                if prefixes.legacy.contains(LegacyPrefix::AddressSizeOverride) {
+                    OperandSize::B4
+                } else {
+                    OperandSize::B2
+                }
+            }
+            X86CpuMode::ProtectedMode => match self.code_segment_default_operand_size {
+                X86SegmentDefaultOperandSize::B16 => {
+                    if prefixes.legacy.contains(LegacyPrefix::AddressSizeOverride) {
+                        OperandSize::B4
+                    } else {
+                        OperandSize::B2
+                    }
+                }
+                X86SegmentDefaultOperandSize::B32 => {
+                    if prefixes.legacy.contains(LegacyPrefix::AddressSizeOverride) {
+                        OperandSize::B2
+                    } else {
+                        OperandSize::B4
+                    }
+                }
+            },
+            X86CpuMode::LongMode => match prefixes.rex {
+                Some(rex_prefix) if rex_prefix.w_bit() => {
+                    if prefixes.legacy.contains(LegacyPrefix::AddressSizeOverride) {
+                        OperandSize::B4
+                    } else {
+                        OperandSize::B8
+                    }
+                }
+                _ => {
+                    if prefixes.legacy.contains(LegacyPrefix::AddressSizeOverride) {
+                        OperandSize::B2
+                    } else {
+                        OperandSize::B4
+                    }
+                }
+            },
+        }
+    }
+}
+impl ArchCtx for X86Ctx {
+    fn translate(&self, mut code: &[u8]) -> Translation {
+        let prefixes = extract_prefixes(&mut code);
+
+        let ctx = PostPrefixesCtx {
+            operand_size: self.resolve_operand_size(&prefixes),
+            address_size: self.resolve_address_size(&prefixes),
+            prefixes,
+        };
+
+        if code.len() == 1 && (0x50..=0x50 + Reg::MAX_VALUE as u8).contains(&code[0]) {
+            return self.translate_push_reg(Reg::from_bits(code[0] - 0x50), ctx);
+        }
+        todo!()
+    }
 }

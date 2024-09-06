@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 
-mod x86;
+pub mod x86;
 
 pub const TRANSLATION_MAX_INSNS: usize = 128;
 
@@ -140,13 +140,6 @@ impl Translation {
     }
 }
 
-#[derive(Debug)]
-pub struct Context {}
-impl Context {
-    pub fn new() -> Self {
-        Self {}
-    }
-    pub fn translate(&self, code: &[u8]) -> Translation {
-        x86::translate(code)
-    }
+pub trait ArchCtx {
+    fn translate(&self, code: &[u8]) -> Translation;
 }
