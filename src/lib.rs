@@ -1,14 +1,33 @@
-use std::{mem::offset_of, num::NonZeroU8};
+use std::num::NonZeroU8;
 mod arch;
 
 use arrayvec::ArrayVec;
+use primwrap::Primitive;
 use thiserror_no_std::Error;
 
+mod regs;
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct PisSize {
     pub bytes: NonZeroU8,
 }
+impl PisSize {
+    pub const B1: Self = Self {
+        bytes: NonZeroU8::new(1).unwrap(),
+    };
+    pub const B2: Self = Self {
+        bytes: NonZeroU8::new(2).unwrap(),
+    };
+    pub const B4: Self = Self {
+        bytes: NonZeroU8::new(4).unwrap(),
+    };
+    pub const B8: Self = Self {
+        bytes: NonZeroU8::new(8).unwrap(),
+    };
+}
 
 #[non_exhaustive]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum PisSpace {
     Reg,
     Tmp,
@@ -16,15 +35,60 @@ pub enum PisSpace {
     Ram,
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Primitive)]
 pub struct PisOff(pub u64);
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct PisAddr {
+    pub space: PisSpace,
+    pub offset: PisOff,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct PisOp {
     pub space: PisSpace,
     pub offset: PisOff,
     pub size: PisSize,
 }
+impl PisOp {
+    pub const fn constant(value: u64, size: PisSize) -> Self {
+        Self {
+            space: PisSpace::Const,
+            offset: PisOff(value),
+            size,
+        }
+    }
+
+    pub const fn addr(&self) -> PisAddr {
+        PisAddr {
+            space: self.space,
+            offset: self.offset,
+        }
+    }
+
+    pub const fn with_size(&self, size: PisSize) -> Self {
+        Self {
+            size,
+            space: self.space,
+            offset: self.offset,
+        }
+    }
+
+    pub const fn add_offset(&self, value: u64) -> Self {
+        Self {
+            offset: PisOff(self.offset.0 + value),
+            space: self.space,
+            size: self.size,
+        }
+    }
+
+    pub const fn end_offset(&self) -> PisOff {
+        PisOff(self.offset.0 + self.size.bytes.get() as u64)
+    }
+}
 
 #[non_exhaustive]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum PisOpcode {
     Add,
     And,
@@ -32,6 +96,7 @@ pub enum PisOpcode {
     Xor,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct PisInsn {
     pub opcode: PisOpcode,
     pub operands: ArrayVec<PisOp, { Self::MAX_OPERANDS }>,
@@ -40,25 +105,33 @@ impl PisInsn {
     pub const MAX_OPERANDS: usize = 4;
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct MachineInsnLen {
     pub bytes: u8,
 }
 
+pub type LiftResInsns = ArrayVec<PisInsn, { LiftRes::MAX_INSNS }>;
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct LiftRes {
-    pub insns: ArrayVec<PisInsn, { Self::MAX_INSNS }>,
+    pub insns: LiftResInsns,
     pub machine_insn_len: MachineInsnLen,
 }
 impl LiftRes {
     pub const MAX_INSNS: usize = 64;
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 #[non_exhaustive]
-pub enum LiftErr {
+pub enum LiftErr<T> {
     #[error("early eof")]
     EarlyEof,
+    #[error("arch specific error: {0}")]
+    ArchSpecific(T),
 }
 
 pub trait PisProcessor {
-    fn lift_one(code: &[u8]) -> Result<LiftRes, LiftErr>;
+    type Err;
+
+    fn lift_one(code: &[u8], machine_code_addr: u64) -> Result<LiftRes, LiftErr<Self::Err>>;
 }
