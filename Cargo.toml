@@ -5,4 +5,8 @@ edition = "2021"
 
 [dependencies]
 arrayvec = { version = "0.7.6", default-features = false }
+thiserror-no-std = "2.0.2"
 yaxpeax-x86 = { version = "2.0.0", default-features = false }
+
+[features]
+std = ["thiserror-no-std/std"]
