@@ -1,10 +1,13 @@
 use std::num::NonZeroU8;
-mod arch;
 
 use arrayvec::ArrayVec;
+use cursor::Cursor;
 use primwrap::Primitive;
 use thiserror_no_std::Error;
 
+mod arch;
+mod cursor;
+mod error;
 mod regs;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -130,8 +133,13 @@ pub enum LiftErr<T> {
     ArchSpecific(T),
 }
 
+pub struct LiftArgs<'a> {
+    code: &'a mut Cursor<'a>,
+    machine_code_addr: u64,
+}
+
 pub trait PisProcessor {
     type Err;
 
-    fn lift_one(code: &[u8], machine_code_addr: u64) -> Result<LiftRes, LiftErr<Self::Err>>;
+    fn lift_one(args: LiftArgs) -> Result<LiftRes, LiftErr<Self::Err>>;
 }

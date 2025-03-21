@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 arrayvec = { version = "0.7.6", default-features = false }
+delve = { version = "0.3.0", features = ["derive"], default-features = false }
+enum_all_values_const = "0.1.1"
 iced-x86 = { version = "1.21.0", default-features = false, features = ["decoder", "no_std"] }
 primwrap = "1.1.0"
 thiserror-no-std = "2.0.2"
