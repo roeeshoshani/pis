@@ -1,11 +1,17 @@
 use std::mem::transmute;
 
+use bit::BitIndex;
+use bit_op::{bit_u8::B3, BitOp};
+use bitpiece::{bitpiece, BitPiece};
 use delve::{EnumVariantCount, VariantCount};
 use enum_all_values_const::AllValues;
 
-use crate::cursor::{Cursor, CursorError};
+use crate::{
+    cursor::{Cursor, CursorError},
+    LiftErr,
+};
 
-use super::X86LiftError;
+use super::{X86Cpumode, X86LiftArgs, X86LiftErr, X86SpecificLiftErr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, AllValues)]
 #[repr(u8)]
@@ -49,6 +55,19 @@ pub struct LegacyPrefixes {
     pub by_group: [Option<LegacyPrefix>; LEGACY_PREFIX_GROUPS_AMOUNT],
 }
 
+#[bitpiece(4)]
+pub struct RexPrefix {
+    pub b: bool,
+    pub x: bool,
+    pub r: bool,
+    pub w: bool,
+}
+
+pub struct Prefixes {
+    pub legacy: LegacyPrefixes,
+    pub rex: Option<RexPrefix>,
+}
+
 const BYTE_VALUE_TO_LEGACY_PREFIX_GROUP: [Option<LegacyPrefixGroup>; 256] = {
     let mut map = [None; 256];
 
@@ -74,12 +93,42 @@ const BYTE_VALUE_TO_LEGACY_PREFIX_GROUP: [Option<LegacyPrefixGroup>; 256] = {
     map
 };
 
-fn parse_legacy_prefixes(code: &mut Cursor) -> Result<LegacyPrefixes, X86LiftError> {
+fn parse_rex_prefix(args: &mut X86LiftArgs) -> Result<Option<RexPrefix>, X86LiftErr> {
+    // first, decide if rex is even supported
+    match args.cpumode {
+        X86Cpumode::B32 => {
+            // in 32-bit mode, rex is not supported. treat it as if there is no rex prefix on the instruction.
+            return Ok(None);
+        }
+        X86Cpumode::B64 => {
+            // in 64-bit mode, rex is supported. continue to the rex parsing logic
+        }
+    }
+
+    // check the first byte at the current cursor position to see if it is a rex prefix.
+    // the current cursor position is assumed to be right after parsing legacy prefixes, but before parsing the instruction itself.
+    let byte = args.generic.code.peek_byte()?;
+
+    if (byte & 0xf0) == 0x40 {
+        // this byte is a rex prefix
+        let rex = RexPrefix::from_bits(byte & 0xf);
+
+        // consume the rex prefix byte
+        args.generic.code.advance_byte()?;
+
+        Ok(Some(rex))
+    } else {
+        // not a rex prefix
+        Ok(None)
+    }
+}
+
+fn parse_legacy_prefixes(args: &mut X86LiftArgs) -> Result<LegacyPrefixes, X86LiftErr> {
     let mut prefixes = LegacyPrefixes {
         by_group: [None; LEGACY_PREFIX_GROUPS_AMOUNT],
     };
     loop {
-        let code_byte = code.peek_byte()?;
+        let code_byte = args.generic.code.peek_byte()?;
         match BYTE_VALUE_TO_LEGACY_PREFIX_GROUP[code_byte as usize] {
             Some(group) => {
                 // SAFETY: if this code byte is associated with a legacy prefix group, then we know that it is a valid legacy prefix
@@ -93,19 +142,32 @@ fn parse_legacy_prefixes(code: &mut Cursor) -> Result<LegacyPrefixes, X86LiftErr
                 // NOPs of arbitrary length.
                 if let Some(existing_prefix) = *entry {
                     if existing_prefix != prefix {
-                        return Err(X86LiftError::TwoLegacyPrefixesOfSameGroup {
-                            prefixes: [existing_prefix, prefix],
-                        });
+                        return Err(LiftErr::ArchSpecific(
+                            X86SpecificLiftErr::TwoLegacyPrefixesOfSameGroup {
+                                prefixes: [existing_prefix, prefix],
+                            },
+                        ));
                     }
                 }
 
                 *entry = Some(prefix);
             }
             None => {
-                // current byte is not a legacy prefix, finished parsing legacy prefixes
+                // current byte is not a legacy prefix, finished parsing legacy prefixes.
+                // note that we did not consume the byte as it is not a legacy prefix.
                 break;
             }
         }
+
+        // advance to the next byte
+        args.generic.code.advance(1);
     }
     Ok(prefixes)
+}
+
+pub fn parse_prefixes(args: &mut X86LiftArgs) -> Result<Prefixes, X86LiftErr> {
+    Ok(Prefixes {
+        legacy: parse_legacy_prefixes(args)?,
+        rex: parse_rex_prefix(args)?,
+    })
 }

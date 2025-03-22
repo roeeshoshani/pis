@@ -37,6 +37,9 @@ impl<'a> Cursor<'a> {
         self.off += amount;
         Ok(())
     }
+    pub fn advance_byte(&mut self) -> Result<(), CursorError> {
+        self.advance(1)
+    }
     pub fn peek_byte(&self) -> Result<u8, CursorError> {
         Ok(self.peek_bytes(1)?[0])
     }
@@ -47,10 +50,6 @@ impl<'a> Cursor<'a> {
 
 #[derive(Debug, Error)]
 pub enum CursorError {
-    OffsetOutOfBounds {
-        offset: usize,
-        data_len: usize,
-    },
     EarlyEof {
         required_bytes_amount: usize,
         actual_bytes_amount: usize,

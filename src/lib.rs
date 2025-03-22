@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
 use arrayvec::ArrayVec;
-use cursor::Cursor;
+use cursor::{Cursor, CursorError};
 use primwrap::Primitive;
 use thiserror_no_std::Error;
 
@@ -127,10 +127,26 @@ impl LiftRes {
 #[derive(Debug, Error, Clone)]
 #[non_exhaustive]
 pub enum LiftErr<T> {
-    #[error("early eof")]
-    EarlyEof,
+    #[error("early eof, {required_bytes_amount} bytes were required, but only {actual_bytes_amount} were available")]
+    EarlyEof {
+        required_bytes_amount: usize,
+        actual_bytes_amount: usize,
+    },
+
     #[error("arch specific error: {0}")]
     ArchSpecific(T),
+}
+impl<T> From<CursorError> for LiftErr<T> {
+    fn from(value: CursorError) -> Self {
+        let CursorError::EarlyEof {
+            required_bytes_amount,
+            actual_bytes_amount,
+        } = value;
+        Self::EarlyEof {
+            required_bytes_amount,
+            actual_bytes_amount,
+        }
+    }
 }
 
 pub struct LiftArgs<'a> {

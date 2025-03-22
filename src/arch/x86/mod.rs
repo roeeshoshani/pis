@@ -1,4 +1,4 @@
-use prefixes::LegacyPrefix;
+use prefixes::{parse_prefixes, LegacyPrefix};
 use regs::DefineRegOperandsSpec;
 
 use crate::{cursor::CursorError, *};
@@ -106,16 +106,32 @@ define_reg_operands! {
 }
 
 #[derive(Debug, Error)]
-pub enum X86LiftError {
+pub enum X86SpecificLiftErr {
     TwoLegacyPrefixesOfSameGroup { prefixes: [LegacyPrefix; 2] },
-    CursorError(#[from] CursorError),
 }
 
-pub struct PisProcessorX86_64;
-impl PisProcessor for PisProcessorX86_64 {
-    type Err = X86LiftError;
+pub type X86LiftErr = LiftErr<X86SpecificLiftErr>;
 
-    fn lift_one(args: LiftArgs) -> Result<LiftRes, LiftErr<Self::Err>> {
+pub enum X86Cpumode {
+    B32,
+    B64,
+}
+
+pub struct X86LiftArgs<'a> {
+    pub generic: LiftArgs<'a>,
+    pub cpumode: X86Cpumode,
+}
+
+pub struct PisProcessorX64;
+impl PisProcessor for PisProcessorX64 {
+    type Err = X86SpecificLiftErr;
+
+    fn lift_one(generic_args: LiftArgs) -> Result<LiftRes, X86LiftErr> {
+        let mut args = X86LiftArgs {
+            generic: generic_args,
+            cpumode: X86Cpumode::B64,
+        };
+        let prefixes = parse_prefixes(&mut args)?;
         todo!()
     }
 }
