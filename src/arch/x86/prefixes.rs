@@ -37,20 +37,34 @@ impl LegacyPrefix {
     pub const fn group(&self) -> LegacyPrefixGroup {
         return BYTE_VALUE_TO_LEGACY_PREFIX_GROUP[*self as usize].unwrap();
     }
+    pub const fn byte_value(&self) -> u8 {
+        *self as u8
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumVariantCount)]
+#[repr(u8)]
 pub enum LegacyPrefixGroup {
-    Group1,
-    Group2,
-    Group3,
-    Group4,
+    Group1 = 0,
+    Group2 = 1,
+    Group3 = 2,
+    Group4 = 3,
+}
+impl LegacyPrefixGroup {
+    pub const fn index(&self) -> usize {
+        *self as usize
+    }
 }
 
 pub const LEGACY_PREFIX_GROUPS_AMOUNT: usize = LegacyPrefixGroup::VARIANT_COUNT;
 
 pub struct LegacyPrefixes {
     pub by_group: [Option<LegacyPrefix>; LEGACY_PREFIX_GROUPS_AMOUNT],
+}
+impl LegacyPrefixes {
+    pub fn contains(&self, prefix: LegacyPrefix) -> bool {
+        self.by_group[prefix.group().index()] == Some(prefix)
+    }
 }
 
 #[bitpiece(4)]

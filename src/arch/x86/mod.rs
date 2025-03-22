@@ -2,7 +2,9 @@ use crate::{regs::DefineRegOperandsSpec, *};
 use prefixes::{parse_prefixes, LegacyPrefix};
 use thiserror_no_std::Error;
 
+mod lift;
 mod prefixes;
+mod tables;
 
 define_reg_operands! {
     DefineRegOperandsSpec { start_offset: PisOff(0), step_size: 8, size: PisSize::B8 },

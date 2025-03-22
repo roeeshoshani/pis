@@ -135,6 +135,9 @@ pub enum LiftErr<T> {
         actual_bytes_amount: usize,
     },
 
+    #[error("unsupported instruction")]
+    UnsupportedInsn,
+
     #[error("arch specific error: {0}")]
     ArchSpecific(T),
 }
