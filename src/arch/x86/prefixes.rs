@@ -1,7 +1,5 @@
 use std::mem::transmute;
 
-use bit::BitIndex;
-use bit_op::{bit_u8::B3, BitOp};
 use bitpiece::{bitpiece, BitPiece};
 use delve::{EnumVariantCount, VariantCount};
 use enum_all_values_const::AllValues;
@@ -160,7 +158,7 @@ fn parse_legacy_prefixes(args: &mut X86LiftArgs) -> Result<LegacyPrefixes, X86Li
         }
 
         // advance to the next byte
-        args.generic.code.advance(1);
+        args.generic.code.advance_byte()?;
     }
     Ok(prefixes)
 }

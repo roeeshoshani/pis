@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::num::NonZeroU8;
 
 use arrayvec::ArrayVec;

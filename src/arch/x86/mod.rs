@@ -1,7 +1,6 @@
+use crate::{regs::DefineRegOperandsSpec, *};
 use prefixes::{parse_prefixes, LegacyPrefix};
-use regs::DefineRegOperandsSpec;
-
-use crate::{cursor::CursorError, *};
+use thiserror_no_std::Error;
 
 mod prefixes;
 
