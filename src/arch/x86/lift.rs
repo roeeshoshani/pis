@@ -1,4 +1,11 @@
-use super::{X86LiftArgs, X86LiftErr, X86SpecificLiftErr};
+use super::{
+    tables::{OpcodeByteTable, FIRST_OPCODE_BYTE_TABLE},
+    X86LiftArgs, X86LiftErr, X86SpecificLiftErr,
+};
+
+fn lift_opcode_byte(opcode_byte: u8, table: &OpcodeByteTable) -> Result<(), X86LiftErr> {
+    todo!()
+}
 
 pub fn lift(args: &mut X86LiftArgs) -> Result<(), X86LiftErr> {
     let first_opcode_byte = args.generic.code.next_byte()?;
@@ -14,6 +21,7 @@ pub fn lift(args: &mut X86LiftArgs) -> Result<(), X86LiftErr> {
         }
     } else {
         // 1 byte opcode
+        lift_opcode_byte(first_opcode_byte, &FIRST_OPCODE_BYTE_TABLE);
     }
     Ok(())
 }

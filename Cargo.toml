@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 arrayvec = { version = "0.7.6", default-features = false }
 bitpiece = "0.1.10"
+const_for = "0.1.5"
 delve = { version = "0.3.0", features = ["derive"], default-features = false }
 enum_all_values_const = "0.1.1"
 primwrap = "1.1.0"
