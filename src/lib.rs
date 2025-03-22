@@ -29,6 +29,26 @@ impl PisSize {
     pub const B8: Self = Self {
         bytes: NonZeroU8::new(8).unwrap(),
     };
+    pub const fn bits(&self) -> u32 {
+        (self.bytes.get() as u32) * 8
+    }
+    pub const fn bytes(&self) -> u32 {
+        self.bytes.get() as u32
+    }
+    pub const fn max_unsigned_val(&self) -> u64 {
+        let bits = self.bits();
+
+        assert!(bits <= 64);
+
+        if bits == 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        }
+    }
+    pub const fn mask(&self) -> u64 {
+        self.max_unsigned_val()
+    }
 }
 
 #[non_exhaustive]
@@ -59,6 +79,14 @@ impl PisOp {
     pub const fn constant(value: u64, size: PisSize) -> Self {
         Self {
             space: PisSpace::Const,
+            offset: PisOff(value),
+            size,
+        }
+    }
+
+    pub const fn reg(offset: u64, size: PisSize) -> Self {
+        Self {
+            space: PisSpace::Reg,
             offset: PisOff(value),
             size,
         }
@@ -99,6 +127,17 @@ pub enum PisOpcode {
     And,
     Or,
     Xor,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub enum ImmExtKind {
+    Zero,
+    Sign,
+}
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub enum PisEndianness {
+    Little,
+    Big,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]

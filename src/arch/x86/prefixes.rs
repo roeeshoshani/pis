@@ -9,7 +9,7 @@ use crate::{
     LiftErr,
 };
 
-use super::{X86Cpumode, X86LiftArgs, X86LiftErr, X86SpecificLiftErr};
+use super::{ctx::CtxInitial, X86Cpumode, X86LiftErr, X86SpecificLiftErr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, AllValues)]
 #[repr(u8)]
@@ -76,8 +76,28 @@ pub struct RexPrefix {
 }
 
 pub struct Prefixes {
-    pub legacy: LegacyPrefixes,
-    pub rex: Option<RexPrefix>,
+    legacy: LegacyPrefixes,
+    rex: Option<RexPrefix>,
+}
+impl Prefixes {
+    pub fn has_legacy_prefix(&self, prefix: LegacyPrefix) -> bool {
+        self.legacy.contains(prefix)
+    }
+    pub fn has_rex(&self) -> bool {
+        self.rex.is_some()
+    }
+    pub fn has_rex_w(&self) -> bool {
+        self.rex.is_some_and(|rex| rex.w())
+    }
+    pub fn has_rex_r(&self) -> bool {
+        self.rex.is_some_and(|rex| rex.r())
+    }
+    pub fn has_rex_x(&self) -> bool {
+        self.rex.is_some_and(|rex| rex.x())
+    }
+    pub fn has_rex_b(&self) -> bool {
+        self.rex.is_some_and(|rex| rex.b())
+    }
 }
 
 const BYTE_VALUE_TO_LEGACY_PREFIX_GROUP: [Option<LegacyPrefixGroup>; 256] = {
@@ -105,9 +125,9 @@ const BYTE_VALUE_TO_LEGACY_PREFIX_GROUP: [Option<LegacyPrefixGroup>; 256] = {
     map
 };
 
-fn parse_rex_prefix(args: &mut X86LiftArgs) -> Result<Option<RexPrefix>, X86LiftErr> {
+fn parse_rex_prefix(ctx: &mut CtxInitial) -> Result<Option<RexPrefix>, X86LiftErr> {
     // first, decide if rex is even supported
-    match args.cpumode {
+    match ctx.cpumode {
         X86Cpumode::B32 => {
             // in 32-bit mode, rex is not supported. treat it as if there is no rex prefix on the instruction.
             return Ok(None);
@@ -119,14 +139,14 @@ fn parse_rex_prefix(args: &mut X86LiftArgs) -> Result<Option<RexPrefix>, X86Lift
 
     // check the first byte at the current cursor position to see if it is a rex prefix.
     // the current cursor position is assumed to be right after parsing legacy prefixes, but before parsing the instruction itself.
-    let byte = args.generic.code.peek_byte()?;
+    let byte = ctx.args.code.peek_byte()?;
 
     if (byte & 0xf0) == 0x40 {
         // this byte is a rex prefix
         let rex = RexPrefix::from_bits(byte & 0xf);
 
         // consume the rex prefix byte
-        args.generic.code.advance_byte()?;
+        ctx.args.code.advance_byte()?;
 
         Ok(Some(rex))
     } else {
@@ -135,12 +155,12 @@ fn parse_rex_prefix(args: &mut X86LiftArgs) -> Result<Option<RexPrefix>, X86Lift
     }
 }
 
-fn parse_legacy_prefixes(args: &mut X86LiftArgs) -> Result<LegacyPrefixes, X86LiftErr> {
+fn parse_legacy_prefixes(ctx: &mut CtxInitial) -> Result<LegacyPrefixes, X86LiftErr> {
     let mut prefixes = LegacyPrefixes {
         by_group: [None; LEGACY_PREFIX_GROUPS_AMOUNT],
     };
     loop {
-        let code_byte = args.generic.code.peek_byte()?;
+        let code_byte = ctx.args.code.peek_byte()?;
         match BYTE_VALUE_TO_LEGACY_PREFIX_GROUP[code_byte as usize] {
             Some(group) => {
                 // SAFETY: if this code byte is associated with a legacy prefix group, then we know that it is a valid legacy prefix
@@ -172,14 +192,14 @@ fn parse_legacy_prefixes(args: &mut X86LiftArgs) -> Result<LegacyPrefixes, X86Li
         }
 
         // advance to the next byte
-        args.generic.code.advance_byte()?;
+        ctx.args.code.advance_byte()?;
     }
     Ok(prefixes)
 }
 
-pub fn parse_prefixes(args: &mut X86LiftArgs) -> Result<Prefixes, X86LiftErr> {
+pub fn parse_prefixes(ctx: &mut CtxInitial) -> Result<Prefixes, X86LiftErr> {
     Ok(Prefixes {
-        legacy: parse_legacy_prefixes(args)?,
-        rex: parse_rex_prefix(args)?,
+        legacy: parse_legacy_prefixes(ctx)?,
+        rex: parse_rex_prefix(ctx)?,
     })
 }

@@ -2,6 +2,10 @@ use arrayvec::ArrayVec;
 use const_for::const_for;
 use delve::{EnumDisplay, EnumToStr, EnumVariantNames};
 
+use crate::{ImmExtKind, PisSize};
+
+use super::{ctx::Ctx, prefixes::LegacyPrefix, X86Cpumode};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Mnemonic {
     Unsupported,
@@ -78,85 +82,82 @@ const SHIFT_BINOP_MNEMONICS: [Mnemonic; 8] = [
     Mnemonic::Sar,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumVariantNames)]
-pub enum OpSize {
-    S8 = 8,
-    S16 = 16,
-    S32 = 32,
-    S64 = 64,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OpSizeInfo {
-    pub with_operand_size_override: OpSize,
-    pub mode_32: OpSize,
-    pub mode_64: OpSize,
-    pub mode_64_with_rex_w: OpSize,
+    pub with_operand_size_override: PisSize,
+    pub mode_32: PisSize,
+    pub mode_64: PisSize,
+    pub mode_64_with_rex_w: PisSize,
 }
 impl OpSizeInfo {
     /// operand size is always 8 bits
     pub const SZ_ALWAYS_8: Self = Self {
-        with_operand_size_override: OpSize::S8,
-        mode_32: OpSize::S8,
-        mode_64: OpSize::S8,
-        mode_64_with_rex_w: OpSize::S8,
+        with_operand_size_override: PisSize::B1,
+        mode_32: PisSize::B1,
+        mode_64: PisSize::B1,
+        mode_64_with_rex_w: PisSize::B1,
     };
 
     /// operand size is always 16 bits
     pub const SZ_ALWAYS_16: Self = Self {
-        with_operand_size_override: OpSize::S16,
-        mode_32: OpSize::S16,
-        mode_64: OpSize::S16,
-        mode_64_with_rex_w: OpSize::S16,
+        with_operand_size_override: PisSize::B2,
+        mode_32: PisSize::B2,
+        mode_64: PisSize::B2,
+        mode_64_with_rex_w: PisSize::B2,
     };
 
     /// the default operand size for instructions that default to 32-bit operands.
     pub const SZ_16_32_64_DEF_32: Self = Self {
-        with_operand_size_override: OpSize::S16,
-        mode_32: OpSize::S32,
-        mode_64: OpSize::S32,
-        mode_64_with_rex_w: OpSize::S64,
+        with_operand_size_override: PisSize::B2,
+        mode_32: PisSize::B4,
+        mode_64: PisSize::B4,
+        mode_64_with_rex_w: PisSize::B8,
     };
 
     /// the default operand size for instructions that default to 64-bit operands.
     pub const SZ_16_32_64_DEF_64: Self = Self {
-        with_operand_size_override: OpSize::S16,
-        mode_32: OpSize::S32,
-        mode_64: OpSize::S64,
-        mode_64_with_rex_w: OpSize::S64,
+        with_operand_size_override: PisSize::B2,
+        mode_32: PisSize::B4,
+        mode_64: PisSize::B8,
+        mode_64_with_rex_w: PisSize::B8,
     };
 
     /// a common size info for immediate encodings that are either 16 or 32 bits.
     pub const SZ_IMM_ENCODING_16_32: Self = Self {
-        with_operand_size_override: OpSize::S16,
-        mode_32: OpSize::S32,
-        mode_64: OpSize::S32,
-        mode_64_with_rex_w: OpSize::S32,
+        with_operand_size_override: PisSize::B2,
+        mode_32: PisSize::B4,
+        mode_64: PisSize::B4,
+        mode_64_with_rex_w: PisSize::B4,
     };
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumVariantNames, EnumToStr)]
-pub enum ImmExtendKind {
-    SignExtend,
-    ZeroExtend,
+    pub fn resolve(&self, ctx: &Ctx) -> PisSize {
+        if ctx.prefixes.has_rex_w() {
+            self.mode_64_with_rex_w
+        } else if ctx
+            .prefixes
+            .legacy
+            .contains(LegacyPrefix::OperandSizeOverride)
+        {
+            self.with_operand_size_override
+        } else {
+            match ctx.cpumode {
+                X86Cpumode::B32 => self.mode_32,
+                X86Cpumode::B64 => self.mode_64,
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ImmOpInfo {
     pub encoded_size: OpSizeInfo,
     pub extended_size: OpSizeInfo,
-    pub extend_kind: ImmExtendKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumVariantNames, EnumToStr)]
-pub enum SpecificImm {
-    Zero,
-    One,
+    pub extend_kind: ImmExtKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SpecificImmOpInfo {
-    pub value: SpecificImm,
+    pub value: u64,
     pub operand_size: OpSizeInfo,
 }
 
@@ -180,8 +181,8 @@ pub struct RegOpInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, EnumVariantNames, EnumToStr)]
 pub enum SpecificReg {
     Rax,
-    Rdx,
     Rcx,
+    Rdx,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -279,16 +280,16 @@ impl OpInfo {
         encoded_size: OpSizeInfo::SZ_ALWAYS_8,
         extended_size: OpSizeInfo::SZ_ALWAYS_8,
         // doesn't matter
-        extend_kind: ImmExtendKind::SignExtend,
+        extend_kind: ImmExtKind::Sign,
     });
 
     /// a 32 bit relative offset
     pub const REL_32: Self = Self::Rel(OpSizeInfo {
         // operand size override is not supported with relative operands, so this is ignored anyway
-        with_operand_size_override: OpSize::S16,
-        mode_32: OpSize::S32,
-        mode_64: OpSize::S32,
-        mode_64_with_rex_w: OpSize::S32,
+        with_operand_size_override: PisSize::B2,
+        mode_32: PisSize::B4,
+        mode_64: PisSize::B4,
+        mode_64_with_rex_w: PisSize::B4,
     });
 }
 
@@ -379,7 +380,7 @@ const fn simple_binary_op(table: &mut OpcodeByteTableBuilder, mnemonic: Mnemonic
             OpInfo::Imm(ImmOpInfo {
                 encoded_size: OpSizeInfo::SZ_IMM_ENCODING_16_32,
                 extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                extend_kind: ImmExtendKind::SignExtend,
+                extend_kind: ImmExtKind::Sign,
             }),
         ],
     }));
@@ -500,10 +501,10 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
         ops: &[
             OpInfo::R_MODRM_16_32_64_DEF_32,
             OpInfo::Rm(OpSizeInfo {
-                with_operand_size_override: OpSize::S16,
-                mode_32: OpSize::S32,
-                mode_64: OpSize::S32,
-                mode_64_with_rex_w: OpSize::S32,
+                with_operand_size_override: PisSize::B2,
+                mode_32: PisSize::B4,
+                mode_64: PisSize::B4,
+                mode_64_with_rex_w: PisSize::B4,
             }),
         ],
     }));
@@ -517,7 +518,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
         ops: &[OpInfo::Imm(ImmOpInfo {
             encoded_size: OpSizeInfo::SZ_IMM_ENCODING_16_32,
             extended_size: OpSizeInfo::SZ_16_32_64_DEF_64,
-            extend_kind: ImmExtendKind::SignExtend,
+            extend_kind: ImmExtKind::Sign,
         })],
     }));
     // 0x69
@@ -530,7 +531,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
             OpInfo::Imm(ImmOpInfo {
                 encoded_size: OpSizeInfo::SZ_IMM_ENCODING_16_32,
                 extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                extend_kind: ImmExtendKind::SignExtend,
+                extend_kind: ImmExtKind::Sign,
             }),
         ],
     }));
@@ -541,7 +542,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
         ops: &[OpInfo::Imm(ImmOpInfo {
             encoded_size: OpSizeInfo::SZ_ALWAYS_8,
             extended_size: OpSizeInfo::SZ_16_32_64_DEF_64,
-            extend_kind: ImmExtendKind::SignExtend,
+            extend_kind: ImmExtKind::Sign,
         })],
     }));
     // 0x6b
@@ -554,7 +555,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
             OpInfo::Imm(ImmOpInfo {
                 encoded_size: OpSizeInfo::SZ_ALWAYS_8,
                 extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                extend_kind: ImmExtendKind::SignExtend,
+                extend_kind: ImmExtKind::Sign,
             }),
         ],
     }));
@@ -588,7 +589,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                 OpInfo::Imm(ImmOpInfo {
                     encoded_size: OpSizeInfo::SZ_IMM_ENCODING_16_32,
                     extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                    extend_kind: ImmExtendKind::SignExtend,
+                    extend_kind: ImmExtKind::Sign,
                 }),
             ],
             SIMPLE_BINOP_MNEMONICS,
@@ -606,7 +607,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                 OpInfo::Imm(ImmOpInfo {
                     encoded_size: OpSizeInfo::SZ_ALWAYS_8,
                     extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                    extend_kind: ImmExtendKind::SignExtend,
+                    extend_kind: ImmExtKind::Sign,
                 }),
             ],
             SIMPLE_BINOP_MNEMONICS,
@@ -714,10 +715,10 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
             OpInfo::SpecificReg(SpecificRegOpInfo {
                 reg: SpecificReg::Rax,
                 size: OpSizeInfo {
-                    with_operand_size_override: OpSize::S8,
-                    mode_32: OpSize::S16,
-                    mode_64: OpSize::S16,
-                    mode_64_with_rex_w: OpSize::S32,
+                    with_operand_size_override: PisSize::B1,
+                    mode_32: PisSize::B2,
+                    mode_64: PisSize::B2,
+                    mode_64_with_rex_w: PisSize::B4,
                 },
             }),
         ],
@@ -814,7 +815,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
             OpInfo::Imm(ImmOpInfo {
                 encoded_size: OpSizeInfo::SZ_IMM_ENCODING_16_32,
                 extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                extend_kind: ImmExtendKind::SignExtend,
+                extend_kind: ImmExtKind::Sign,
             }),
         ],
     }));
@@ -876,7 +877,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                 OpInfo::Imm(ImmOpInfo {
                     encoded_size: OpSizeInfo::SZ_16_32_64_DEF_32,
                     extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                    extend_kind: ImmExtendKind::ZeroExtend,
+                    extend_kind: ImmExtKind::Zero,
                 }),
             ],
         }),
@@ -898,7 +899,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                 OpInfo::Imm(ImmOpInfo {
                     encoded_size: OpSizeInfo::SZ_ALWAYS_8,
                     extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                    extend_kind: ImmExtendKind::ZeroExtend,
+                    extend_kind: ImmExtKind::Zero,
                 }),
             ],
             SHIFT_BINOP_MNEMONICS,
@@ -944,7 +945,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                     OpInfo::Imm(ImmOpInfo {
                         encoded_size: OpSizeInfo::SZ_IMM_ENCODING_16_32,
                         extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                        extend_kind: ImmExtendKind::SignExtend,
+                        extend_kind: ImmExtKind::Sign,
                     }),
                 ],
             },
@@ -967,7 +968,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
             &[
                 OpInfo::RM_8,
                 OpInfo::SpecificImm(SpecificImmOpInfo {
-                    value: SpecificImm::One,
+                    value: 1,
                     operand_size: OpSizeInfo::SZ_ALWAYS_8,
                 }),
             ],
@@ -981,7 +982,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
             &[
                 OpInfo::RM_16_32_64_DEF_32,
                 OpInfo::SpecificImm(SpecificImmOpInfo {
-                    value: SpecificImm::One,
+                    value: 1,
                     operand_size: OpSizeInfo::SZ_16_32_64_DEF_32,
                 }),
             ],
@@ -1105,7 +1106,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                     OpInfo::Imm(ImmOpInfo {
                         encoded_size: OpSizeInfo::SZ_IMM_ENCODING_16_32,
                         extended_size: OpSizeInfo::SZ_16_32_64_DEF_32,
-                        extend_kind: ImmExtendKind::SignExtend,
+                        extend_kind: ImmExtKind::Sign,
                     }),
                 ],
             },
@@ -1220,10 +1221,10 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                 mnemonic: Mnemonic::Call,
                 ops: &[OpInfo::Rm(OpSizeInfo {
                     // operand size override is not supported with branch instruction, so this is ignored anyway
-                    with_operand_size_override: OpSize::S16,
-                    mode_32: OpSize::S32,
-                    mode_64: OpSize::S64,
-                    mode_64_with_rex_w: OpSize::S64,
+                    with_operand_size_override: PisSize::B2,
+                    mode_32: PisSize::B4,
+                    mode_64: PisSize::B8,
+                    mode_64_with_rex_w: PisSize::B8,
                 })],
             },
             // 3
@@ -1233,10 +1234,10 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
                 mnemonic: Mnemonic::Jmp,
                 ops: &[OpInfo::Rm(OpSizeInfo {
                     // operand size override is not supported with branch instruction, so this is ignored anyway
-                    with_operand_size_override: OpSize::S16,
-                    mode_32: OpSize::S32,
-                    mode_64: OpSize::S64,
-                    mode_64_with_rex_w: OpSize::S64,
+                    with_operand_size_override: PisSize::B2,
+                    mode_32: PisSize::B4,
+                    mode_64: PisSize::B8,
+                    mode_64_with_rex_w: PisSize::B8,
                 })],
             },
             // 5

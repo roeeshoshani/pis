@@ -1,7 +1,10 @@
 use crate::{regs::DefineRegOperandsSpec, *};
+use ctx::{CtxInitial, CtxPostPrefixes};
+use lift::lift_post_prefixes;
 use prefixes::{parse_prefixes, LegacyPrefix};
 use thiserror_no_std::Error;
 
+mod ctx;
 mod lift;
 mod prefixes;
 mod tables;
@@ -113,26 +116,34 @@ pub enum X86SpecificLiftErr {
 
 pub type X86LiftErr = LiftErr<X86SpecificLiftErr>;
 
+type Result<T> = core::result::Result<T, X86LiftErr>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum X86Cpumode {
     B32,
     B64,
 }
 
-pub struct X86LiftArgs<'a> {
-    pub generic: LiftArgs<'a>,
-    pub cpumode: X86Cpumode,
+fn lift_one_with_cpumode(args: LiftArgs, cpumode: X86Cpumode) -> Result<LiftRes> {
+    // parse prefixes
+    let mut ctx_initial = CtxInitial { cpumode, args };
+    let prefixes = parse_prefixes(&mut ctx_initial)?;
+
+    // continue to parsing the rest of the instruction
+    let ctx_post_prefixes = CtxPostPrefixes {
+        args: ctx_initial.args,
+        cpumode,
+        prefixes,
+    };
+    lift_post_prefixes(ctx_post_prefixes)?;
+    todo!()
 }
 
 pub struct PisProcessorX64;
 impl PisProcessor for PisProcessorX64 {
     type Err = X86SpecificLiftErr;
 
-    fn lift_one(generic_args: LiftArgs) -> Result<LiftRes, X86LiftErr> {
-        let mut args = X86LiftArgs {
-            generic: generic_args,
-            cpumode: X86Cpumode::B64,
-        };
-        let prefixes = parse_prefixes(&mut args)?;
-        todo!()
+    fn lift_one(args: LiftArgs) -> Result<LiftRes> {
+        lift_one_with_cpumode(args, X86Cpumode::B64)
     }
 }
