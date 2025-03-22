@@ -308,7 +308,7 @@ impl RegularInsnInfo {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModrmRegOpcodeExtInsnInfo {
-    pub by_reg_value: [RegularInsnInfo; 8],
+    pub by_modrm_reg_value: [RegularInsnInfo; 8],
 }
 impl ModrmRegOpcodeExtInsnInfo {
     pub const fn new_with_same_operands(ops: Ops, mnemonics: [Mnemonic; 8]) -> Self {
@@ -316,7 +316,9 @@ impl ModrmRegOpcodeExtInsnInfo {
         const_for!(i in 0..8 => {
             by_reg_value[i].mnemonic = mnemonics[i];
         });
-        Self { by_reg_value }
+        Self {
+            by_modrm_reg_value: by_reg_value,
+        }
     }
 }
 
@@ -673,7 +675,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
     // 0x8f
     assert!(table.cur_index == 0x8f);
     table.push(InsnInfo::ModrmRegOpcodeExt(ModrmRegOpcodeExtInsnInfo {
-        by_reg_value: [
+        by_modrm_reg_value: [
             RegularInsnInfo {
                 mnemonic: Mnemonic::Pop,
                 ops: &[OpInfo::RM_16_32_64_DEF_64],
@@ -917,7 +919,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
     // 0xc6
     assert!(table.cur_index == 0xc6);
     table.push(InsnInfo::ModrmRegOpcodeExt(ModrmRegOpcodeExtInsnInfo {
-        by_reg_value: [
+        by_modrm_reg_value: [
             RegularInsnInfo {
                 mnemonic: Mnemonic::Mov,
                 ops: &[OpInfo::RM_8, OpInfo::IMM_8_NO_EXT],
@@ -934,7 +936,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
     // 0xc7
     assert!(table.cur_index == 0xc7);
     table.push(InsnInfo::ModrmRegOpcodeExt(ModrmRegOpcodeExtInsnInfo {
-        by_reg_value: [
+        by_modrm_reg_value: [
             RegularInsnInfo {
                 mnemonic: Mnemonic::Mov,
                 ops: &[
@@ -1051,7 +1053,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
     // 0xf6
     assert!(table.cur_index == 0xf6);
     table.push(InsnInfo::ModrmRegOpcodeExt(ModrmRegOpcodeExtInsnInfo {
-        by_reg_value: [
+        by_modrm_reg_value: [
             // 0
             RegularInsnInfo {
                 mnemonic: Mnemonic::Test,
@@ -1094,7 +1096,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
     // 0xf7
     assert!(table.cur_index == 0xf7);
     table.push(InsnInfo::ModrmRegOpcodeExt(ModrmRegOpcodeExtInsnInfo {
-        by_reg_value: [
+        by_modrm_reg_value: [
             // 0
             RegularInsnInfo {
                 mnemonic: Mnemonic::Test,
@@ -1180,7 +1182,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
     // 0xfe
     assert!(table.cur_index == 0xfe);
     table.push(InsnInfo::ModrmRegOpcodeExt(ModrmRegOpcodeExtInsnInfo {
-        by_reg_value: [
+        by_modrm_reg_value: [
             // 0
             RegularInsnInfo {
                 mnemonic: Mnemonic::Inc,
@@ -1202,7 +1204,7 @@ const fn gen_first_opcode_byte_table() -> OpcodeByteTable {
     // 0xff
     assert!(table.cur_index == 0xff);
     table.push(InsnInfo::ModrmRegOpcodeExt(ModrmRegOpcodeExtInsnInfo {
-        by_reg_value: [
+        by_modrm_reg_value: [
             // 0
             RegularInsnInfo {
                 mnemonic: Mnemonic::Inc,
