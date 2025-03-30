@@ -6,6 +6,7 @@ use thiserror_no_std::Error;
 
 mod ctx;
 mod lift;
+mod modrm;
 mod prefixes;
 mod tables;
 
@@ -122,6 +123,14 @@ type Result<T> = core::result::Result<T, X86LiftErr>;
 pub enum X86Cpumode {
     B32,
     B64,
+}
+impl X86Cpumode {
+    pub fn operand_size(&self) -> PisSize {
+        match self {
+            X86Cpumode::B32 => PisSize::B4,
+            X86Cpumode::B64 => PisSize::B8,
+        }
+    }
 }
 
 fn lift_one_with_cpumode(args: LiftArgs, cpumode: X86Cpumode) -> Result<LiftRes> {

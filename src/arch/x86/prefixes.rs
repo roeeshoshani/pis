@@ -4,6 +4,7 @@ use bitpiece::{bitpiece, BitPiece};
 use delve::{EnumVariantCount, VariantCount};
 use enum_all_values_const::AllValues;
 
+use super::Result;
 use crate::{
     cursor::{Cursor, CursorError},
     LiftErr,
@@ -125,7 +126,7 @@ const BYTE_VALUE_TO_LEGACY_PREFIX_GROUP: [Option<LegacyPrefixGroup>; 256] = {
     map
 };
 
-fn parse_rex_prefix(ctx: &mut CtxInitial) -> Result<Option<RexPrefix>, X86LiftErr> {
+fn parse_rex_prefix(ctx: &mut CtxInitial) -> Result<Option<RexPrefix>> {
     // first, decide if rex is even supported
     match ctx.cpumode {
         X86Cpumode::B32 => {
@@ -155,7 +156,7 @@ fn parse_rex_prefix(ctx: &mut CtxInitial) -> Result<Option<RexPrefix>, X86LiftEr
     }
 }
 
-fn parse_legacy_prefixes(ctx: &mut CtxInitial) -> Result<LegacyPrefixes, X86LiftErr> {
+fn parse_legacy_prefixes(ctx: &mut CtxInitial) -> Result<LegacyPrefixes> {
     let mut prefixes = LegacyPrefixes {
         by_group: [None; LEGACY_PREFIX_GROUPS_AMOUNT],
     };
@@ -197,7 +198,7 @@ fn parse_legacy_prefixes(ctx: &mut CtxInitial) -> Result<LegacyPrefixes, X86Lift
     Ok(prefixes)
 }
 
-pub fn parse_prefixes(ctx: &mut CtxInitial) -> Result<Prefixes, X86LiftErr> {
+pub fn parse_prefixes(ctx: &mut CtxInitial) -> Result<Prefixes> {
     Ok(Prefixes {
         legacy: parse_legacy_prefixes(ctx)?,
         rex: parse_rex_prefix(ctx)?,

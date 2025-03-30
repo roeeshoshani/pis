@@ -2,7 +2,10 @@ use bitpiece::BitPiece;
 
 use crate::LiftArgs;
 
-use super::{lift::Modrm, prefixes::Prefixes, tables::OpcodeByteTable, Result, X86Cpumode};
+use super::{
+    lift::Modrm, prefixes::Prefixes, tables::OpcodeByteTable, tmp_op_allocator::TmpOpAllocator,
+    LiftRes, PisSize, Result, X86Cpumode,
+};
 
 /// the initial context after just getting the lift args and deciding the desired cpumode
 pub struct CtxInitial<'a> {
@@ -25,6 +28,10 @@ pub struct Ctx<'a> {
     pub opcode_byte: u8,
     pub opcode_table: &'static OpcodeByteTable,
     pub modrm: Option<Modrm>,
+    pub addr_size: PisSize,
+    pub stack_addr_size: PisSize,
+    pub res: LiftRes,
+    pub tmp_op_allocator: TmpOpAllocator,
 }
 
 impl<'a> Ctx<'a> {

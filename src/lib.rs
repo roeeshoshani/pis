@@ -6,11 +6,13 @@ use arrayvec::ArrayVec;
 use cursor::{Cursor, CursorError};
 use primwrap::Primitive;
 use thiserror_no_std::Error;
+use tmp_op_allocator::TooManyTmpsErr;
 
 mod arch;
 mod cursor;
 mod error;
 mod regs;
+mod tmp_op_allocator;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct PisSize {
@@ -92,6 +94,14 @@ impl PisOp {
         }
     }
 
+    pub const fn tmp(offset: u64, size: PisSize) -> Self {
+        Self {
+            space: PisSpace::Tmp,
+            offset: PisOff(offset),
+            size,
+        }
+    }
+
     pub const fn addr(&self) -> PisAddr {
         PisAddr {
             space: self.space,
@@ -163,6 +173,12 @@ pub struct LiftRes {
 }
 impl LiftRes {
     pub const MAX_INSNS: usize = 64;
+    pub fn new() -> Self {
+        Self {
+            insns: LiftResInsns::new(),
+            machine_insn_len: MachineInsnLen { bytes: 0 },
+        }
+    }
 }
 
 #[derive(Debug, Error, Clone)]
@@ -177,6 +193,9 @@ pub enum LiftErr<T> {
     #[error("unsupported instruction")]
     UnsupportedInsn,
 
+    #[error("too many tmps")]
+    TooManyTmps,
+
     #[error("arch specific error: {0}")]
     ArchSpecific(T),
 }
@@ -190,6 +209,11 @@ impl<T> From<CursorError> for LiftErr<T> {
             required_bytes_amount,
             actual_bytes_amount,
         }
+    }
+}
+impl<T> From<TooManyTmpsErr> for LiftErr<T> {
+    fn from(value: TooManyTmpsErr) -> Self {
+        Self::TooManyTmps
     }
 }
 

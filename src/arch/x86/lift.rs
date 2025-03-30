@@ -1,7 +1,9 @@
 use super::{
     ctx::{Ctx, CtxPostPrefixes},
+    prefixes::LegacyPrefix,
     tables::{OpInfo, RegularInsnInfo, SpecificReg},
-    Result,
+    tmp_op_allocator::TmpOpAllocator,
+    LiftRes, Result,
 };
 use crate::{
     arch::x86::tables::{InsnInfo, Mnemonic, RegEncoding},
@@ -22,12 +24,12 @@ pub enum LiftedOp {
     Implicit(PisSize),
 }
 
-fn apply_rex_bit_to_reg_encoding(reg_encoding: u8, rex_bit: bool) -> u8 {
+pub fn apply_rex_bit_to_reg_encoding(reg_encoding: u8, rex_bit: bool) -> u8 {
     reg_encoding | ((rex_bit as u8) << 3)
 }
 
 impl<'a> Ctx<'a> {
-    fn decode_reg(&self, reg_encoding: u8, size: PisSize) -> PisOp {
+    pub fn decode_reg(&self, reg_encoding: u8, size: PisSize) -> PisOp {
         if size.bytes() == 1 && !self.prefixes.has_rex() && reg_encoding >= 4 && reg_encoding <= 7 {
             // this is an access to the high part of a gpr, for example `AH`.
             //
@@ -116,9 +118,9 @@ fn lift_post_opcode_decode(ctx: &mut Ctx) -> Result<()> {
 
 #[bitpiece(8)]
 pub struct Modrm {
-    rm: B3,
-    reg: B3,
-    mod_val: B2,
+    pub rm: B3,
+    pub reg: B3,
+    pub mod_val: B2,
 }
 
 struct DecodedOpcode {
@@ -147,8 +149,36 @@ fn decode_opcode(ctx: &mut CtxPostPrefixes) -> Result<DecodedOpcode> {
     }
 }
 
+fn calc_stack_addr_size(ctx: &CtxPostPrefixes) -> PisSize {
+    ctx.cpumode.operand_size()
+}
+
+fn calc_addr_size(ctx: &CtxPostPrefixes) -> PisSize {
+    let has_size_override = ctx
+        .prefixes
+        .has_legacy_prefix(LegacyPrefix::AddressSizeOverride);
+    match ctx.cpumode {
+        super::X86Cpumode::B32 => {
+            if has_size_override {
+                PisSize::B2
+            } else {
+                PisSize::B4
+            }
+        }
+        super::X86Cpumode::B64 => {
+            if has_size_override {
+                PisSize::B4
+            } else {
+                PisSize::B8
+            }
+        }
+    }
+}
+
 pub fn lift_post_prefixes(mut ctx: CtxPostPrefixes) -> Result<()> {
     let decoded_opcode = decode_opcode(&mut ctx)?;
+    let addr_size = calc_addr_size(&ctx);
+    let stack_addr_size = calc_stack_addr_size(&ctx);
     let mut final_ctx = Ctx {
         args: ctx.args,
         cpumode: ctx.cpumode,
@@ -156,6 +186,10 @@ pub fn lift_post_prefixes(mut ctx: CtxPostPrefixes) -> Result<()> {
         opcode_byte: decoded_opcode.opcode_byte,
         opcode_table: decoded_opcode.opcode_table,
         modrm: None,
+        addr_size,
+        stack_addr_size,
+        res: LiftRes::new(),
+        tmp_op_allocator: TmpOpAllocator::new(),
     };
     lift_post_opcode_decode(&mut final_ctx)
 }
