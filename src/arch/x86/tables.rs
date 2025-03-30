@@ -135,8 +135,7 @@ impl OpSizeInfo {
             self.mode_64_with_rex_w
         } else if ctx
             .prefixes
-            .legacy
-            .contains(LegacyPrefix::OperandSizeOverride)
+            .has_legacy_prefix(LegacyPrefix::OperandSizeOverride)
         {
             self.with_operand_size_override
         } else {

@@ -27,7 +27,7 @@ fn apply_rex_bit_to_reg_encoding(reg_encoding: u8, rex_bit: bool) -> u8 {
 }
 
 impl<'a> Ctx<'a> {
-    fn get_reg_op(&self, reg_encoding: u8, size: PisSize) -> PisOp {
+    fn decode_reg(&self, reg_encoding: u8, size: PisSize) -> PisOp {
         if size.bytes() == 1 && !self.prefixes.has_rex() && reg_encoding >= 4 && reg_encoding <= 7 {
             // this is an access to the high part of a gpr, for example `AH`.
             //
@@ -69,7 +69,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
                 }
             };
             let size = reg.size.resolve(ctx);
-            Ok(LiftedOp::Reg(ctx.get_reg_op(reg_encoding, size)))
+            Ok(LiftedOp::Reg(ctx.decode_reg(reg_encoding, size)))
         }
         OpInfo::Rm(op_size_info) => todo!(),
         OpInfo::SpecificReg(specific_reg) => {
@@ -79,7 +79,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
                 SpecificReg::Rdx => 1,
             };
             let size = specific_reg.size.resolve(ctx);
-            Ok(LiftedOp::Reg(ctx.get_reg_op(reg_encoding, size)))
+            Ok(LiftedOp::Reg(ctx.decode_reg(reg_encoding, size)))
         }
         OpInfo::ZextSpecificReg(zext_specific_reg_op_info) => todo!(),
         OpInfo::Rel(op_size_info) => todo!(),

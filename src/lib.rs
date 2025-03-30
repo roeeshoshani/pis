@@ -87,7 +87,7 @@ impl PisOp {
     pub const fn reg(offset: u64, size: PisSize) -> Self {
         Self {
             space: PisSpace::Reg,
-            offset: PisOff(value),
+            offset: PisOff(offset),
             size,
         }
     }
