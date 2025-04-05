@@ -1,7 +1,9 @@
+use std::cmp::min;
+
 use bitpiece::BitPiece;
 
 use crate::{
-    arch::x86::{X86_REG_BP, X86_REG_BX, X86_REG_DI, X86_REG_SI},
+    arch::x86::{X86_REG_BP, X86_REG_BX, X86_REG_DI, X86_REG_RIP, X86_REG_SI},
     cursor::CursorImmExtParams,
     ImmExtKind, PisEndianness,
 };
@@ -55,11 +57,18 @@ fn decode_disp(ctx: &mut Ctx) -> Result<Option<PisOp>> {
             Ok(Some(disp))
         }
         0b10 => {
-            // displacement with size equal to address size
-            let disp = ctx
-                .args
-                .code
-                .next_imm_op(ctx.addr_size, PisEndianness::Little)?;
+            // displacement with varying size, depending on address size
+            //
+            // the encoded size of the displacement is equal to the address size, but has a maximum length of 32 bits.
+            let encoded_size = min(ctx.addr_size, PisSize::B4);
+
+            let disp = ctx.args.code.next_imm_ext_op(&CursorImmExtParams {
+                encoded_size,
+                extended_size: ctx.addr_size,
+                ext_kind: ImmExtKind::Sign,
+                endianness: PisEndianness::Little,
+            })?;
+
             Ok(Some(disp))
         }
         0b11 => {
@@ -121,6 +130,43 @@ fn decode_sib(ctx: &mut Ctx, modrm: Modrm) -> Result<PisOp> {
     ctx.op_add_opt(base_op, maybe_scaled_index)
 }
 
+fn decode_rm_memory_64(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
+    let mod_val = modrm.mod_val().get();
+    let rm = modrm.rm().get();
+
+    if mod_val == 0b00 && rm == 0b101 {
+        // special case for rip relative with 32 bit displacement
+        let disp = ctx.args.code.next_imm_ext_op(&CursorImmExtParams {
+            encoded_size: PisSize::B4,
+            extended_size: PisSize::B8,
+            ext_kind: ImmExtKind::Sign,
+            endianness: PisEndianness::Little,
+        })?;
+        // we want to use the value of RIP here, but we have no way of calculating it at this point.
+        // to calculate RIP, we need to know the full length of the instruction, but at this point, we are only decoding the modrm
+        // byte, which may be followed by some additional bytes representing for example an immediate operand, but we don't know it
+        // at this point.
+        // so, we use the RIP register, which will later be resolved by the lifter to the actual address after we determine the full
+        // length of the instruction.
+        return Ok(MemOpAddr(ctx.op_add(X86_REG_RIP, disp)?));
+    }
+
+    // handle base regs
+    let base_regs = if rm == 0b100 {
+        decode_sib(ctx, modrm)?
+    } else {
+        ctx.decode_reg(
+            apply_rex_bit_to_reg_encoding(rm, ctx.prefixes.has_rex_b()),
+            PisSize::B8,
+        )
+    };
+
+    // apply the disaplacement
+    let addr = decode_and_apply_disp(ctx, base_regs)?;
+
+    Ok(MemOpAddr(addr))
+}
+
 fn decode_rm_memory_32(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
     let mod_val = modrm.mod_val().get();
     let rm = modrm.rm().get();
@@ -132,7 +178,7 @@ fn decode_rm_memory_32(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
     }
 
     // handle base regs
-    let base_regs = if rm == 0b00 {
+    let base_regs = if rm == 0b100 {
         decode_sib(ctx, modrm)?
     } else {
         ctx.decode_reg(rm, PisSize::B4)
@@ -178,6 +224,7 @@ fn decode_rm_memory(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
     match ctx.addr_size {
         PisSize::B2 => decode_rm_memory_16(ctx, modrm),
         PisSize::B4 => decode_rm_memory_32(ctx, modrm),
+        PisSize::B8 => decode_rm_memory_64(ctx, modrm),
         _ => todo!(),
     }
 }

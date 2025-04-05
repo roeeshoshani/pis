@@ -227,6 +227,12 @@ pub struct LiftArgs<'a> {
     code: &'a mut Cursor<'a>,
     machine_code_addr: u64,
 }
+impl<'a> LiftArgs<'a> {
+    /// returns the address in memory where the code cursor currently points to
+    pub fn cur_code_addr(&mut self) -> u64 {
+        self.machine_code_addr + self.code.off() as u64
+    }
+}
 
 pub trait PisProcessor {
     type Err;

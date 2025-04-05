@@ -28,6 +28,28 @@ define_reg_operands! {
     X86_REG_R13,
     X86_REG_R14,
     X86_REG_R15,
+    // the RIP register is never emitted from the x86 lifter, but it is used internally during some intermediate representation
+    // of instructions when lifting x86 instructions that use rip-relative addressing.
+    //
+    // you may wonder why this is required. knowing the value of RIP is only possible after we know the full length of the instruction,
+    // since RIP represents the end address of the instruction. and, due to our incremental decoding strategy, we only know the full
+    // length of the instruction when we finish decoding it.
+    // but, sometimes we need to use the value of RIP before we know the full length of the instruction.
+    //
+    // for example, consider the following instruction:
+    // ```
+    // 0x1000: c7 05 00 00 00 00 78 56 34 12  mov dword [rip], 0x12345678
+    // 0x100a: ...
+    // ```
+    // when decoding modrm byte (0x05), we see that it uses RIP relative addressing, so the accessed memory address is the value of RIP.
+    // but, when decoding the modrm byte, we don't yet know the full length of the instruction, since the modrm byte (along with the 4
+    // byte RIP-relative displacement of 0x00000000) is then followed by another immediate operand, which is only going to be decoded
+    // later, and we are unaware of its existence at that point.
+    // so, in this case, we can just use the RIP register operand.
+    //
+    // the RIP register operand will then be resolved to its proper value after we finish decoding the entire instruction and know
+    // its full length.
+    X86_REG_RIP,
 }
 
 define_reg_operands! {
@@ -109,6 +131,8 @@ define_reg_operands! {
     X86_REG_FS_BASE,
     X86_REG_GS_BASE,
 }
+
+const SEG_REGS_END_OFFSET: PisOff = X86_REG_GS_BASE.end_offset();
 
 #[derive(Debug, Error)]
 pub enum X86SpecificLiftErr {
