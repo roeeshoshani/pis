@@ -14,25 +14,32 @@ pub enum ModrmRmOperand {
     Reg(PisOp),
 }
 
-fn modrm_decode_rm_memory_operand(
+fn decode_rm_memory_16(
     ctx: &mut Ctx,
-    modrm: Modrm,
     operand_size: PisSize,
+    modrm: Modrm,
 ) -> Result<ModrmRmOperand> {
-    todo!()
+    let mod_val = modrm.mod_val().get();
+    if mod_val == 0b00 && mod_val == 0b110 {
+        // 16 bit displacement only
+        ctx.args.code.next_imm_ext(Curs)
+    }
 }
 
-pub fn modrm_decode_rm_operand(
-    ctx: &mut Ctx,
-    modrm: Modrm,
-    operand_size: PisSize,
-) -> Result<ModrmRmOperand> {
+fn decode_rm_memory(ctx: &mut Ctx, operand_size: PisSize, modrm: Modrm) -> Result<ModrmRmOperand> {
+    match ctx.addr_size {
+        PisSize::B2 => decode_rm_memory_16(ctx),
+    }
+}
+
+pub fn modrm_decode_rm_operand(ctx: &mut Ctx, operand_size: PisSize) -> Result<ModrmRmOperand> {
+    let modrm = ctx.modrm()?;
     if modrm.mod_val().get() == 0b11 {
         // in this case, the rm operand is a register and not a memory operand
         let encoded_reg = apply_rex_bit_to_reg_encoding(modrm.rm().get(), ctx.prefixes.has_rex_b());
         let reg = ctx.decode_reg(encoded_reg, operand_size);
         Ok(ModrmRmOperand::Reg(reg))
     } else {
-        modrm_decode_rm_memory_operand(ctx, modrm, operand_size)
+        decode_rm_memory(ctx, operand_size)
     }
 }

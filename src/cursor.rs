@@ -57,6 +57,12 @@ impl<'a> Cursor<'a> {
     pub fn next_byte(&mut self) -> Result<u8, CursorError> {
         Ok(self.next_bytes(1)?[0])
     }
+    pub fn next_imm(
+        &mut self,
+        size: PisSize,
+        endianness: PisEndianness,
+    ) -> Result<u64, CursorError> {
+    }
     pub fn next_imm_ext(&mut self, params: CursorImmExtParams) -> Result<u64, CursorError> {
         assert!(params.extended_size >= params.encoded_size);
         let extended_to_64_bits = match params.encoded_size.bytes() {
