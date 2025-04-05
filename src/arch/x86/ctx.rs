@@ -1,6 +1,6 @@
 use bitpiece::BitPiece;
 
-use crate::LiftArgs;
+use crate::{utils::array_vec, LiftArgs, PisInsn, PisOp, PisOpcode};
 
 use super::{
     lift::Modrm, prefixes::Prefixes, tables::OpcodeByteTable, tmp_op_allocator::TmpOpAllocator,
@@ -36,9 +36,34 @@ pub struct Ctx<'a> {
 
 impl<'a> Ctx<'a> {
     pub fn modrm(&mut self) -> Result<Modrm> {
-        if self.modrm.is_none() {
-            self.modrm = Some(Modrm::from_bits(self.args.code.next_byte()?));
+        match self.modrm {
+            Some(modrm) => Ok(modrm),
+            None => Ok(*self
+                .modrm
+                .insert(Modrm::from_bits(self.args.code.next_byte()?))),
         }
-        Ok(*self.modrm.as_ref().unwrap())
+    }
+
+    /// adds the given 2 operands into a new tmp operand and returns it.
+    pub fn op_add(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        assert_eq!(a.size, b.size);
+        let tmp = self.tmp_op_allocator.alloc(a.size)?;
+
+        self.res.insns.push(PisInsn {
+            opcode: PisOpcode::Add,
+            operands: array_vec![tmp.clone(), a, b],
+        });
+
+        Ok(tmp)
+    }
+
+    /// adds the given value to the given destination operand.
+    pub fn op_add_assign(&mut self, dst: &mut PisOp, val: PisOp) {
+        assert_eq!(dst.size, val.size);
+
+        self.res.insns.push(PisInsn {
+            opcode: PisOpcode::Add,
+            operands: array_vec![dst.clone(), dst.clone(), val],
+        });
     }
 }

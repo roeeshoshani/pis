@@ -48,13 +48,13 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
     match op {
         OpInfo::Imm(imm) => {
             let extended_size = imm.extended_size.resolve(ctx);
-            let imm_val = ctx.args.code.next_imm_ext(CursorImmExtParams {
+            let imm = ctx.args.code.next_imm_ext_op(&CursorImmExtParams {
                 encoded_size: imm.encoded_size.resolve(ctx),
                 extended_size,
                 ext_kind: imm.extend_kind,
                 endianness: PisEndianness::Little,
             })?;
-            Ok(LiftedOp::Value(PisOp::constant(imm_val, extended_size)))
+            Ok(LiftedOp::Value(imm))
         }
         OpInfo::SpecificImm(specific_imm) => {
             let size = specific_imm.operand_size.resolve(ctx);
@@ -117,6 +117,7 @@ fn lift_post_opcode_decode(ctx: &mut Ctx) -> Result<()> {
 }
 
 #[bitpiece(8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Modrm {
     pub rm: B3,
     pub reg: B3,

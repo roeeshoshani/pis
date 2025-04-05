@@ -36,6 +36,7 @@ pub enum LegacyPrefix {
 }
 impl LegacyPrefix {
     pub const fn group(&self) -> LegacyPrefixGroup {
+        // SAFETY: all values of the enum are less than the length of the array, so this is always safe.
         return BYTE_VALUE_TO_LEGACY_PREFIX_GROUP[*self as usize].unwrap();
     }
     pub const fn byte_value(&self) -> u8 {

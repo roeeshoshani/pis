@@ -1,6 +1,6 @@
 use thiserror_no_std::Error;
 
-use crate::{ImmExtKind, PisEndianness, PisSize};
+use crate::{ImmExtKind, PisEndianness, PisOp, PisSize};
 
 pub struct Cursor<'a> {
     data: &'a [u8],
@@ -36,6 +36,7 @@ impl<'a> Cursor<'a> {
     }
     pub fn peek_array<const SIZE: usize>(&self) -> Result<[u8; SIZE], CursorError> {
         self.check_advance(SIZE)?;
+        // SAFETY: the data that we slice is of length `SIZE`, so converting it to an array of that size will never fail.
         Ok(self.data[self.off..self.off + SIZE].try_into().unwrap())
     }
     pub fn next_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE], CursorError> {
@@ -62,8 +63,26 @@ impl<'a> Cursor<'a> {
         size: PisSize,
         endianness: PisEndianness,
     ) -> Result<u64, CursorError> {
+        self.next_imm_ext(&CursorImmExtParams {
+            encoded_size: size,
+            extended_size: size,
+            ext_kind: ImmExtKind::Zero,
+            endianness,
+        })
     }
-    pub fn next_imm_ext(&mut self, params: CursorImmExtParams) -> Result<u64, CursorError> {
+    pub fn next_imm_op(
+        &mut self,
+        size: PisSize,
+        endianness: PisEndianness,
+    ) -> Result<PisOp, CursorError> {
+        let value = self.next_imm(size, endianness)?;
+        Ok(PisOp::constant(value, size))
+    }
+    pub fn next_imm_ext_op(&mut self, params: &CursorImmExtParams) -> Result<PisOp, CursorError> {
+        let value = self.next_imm_ext(params)?;
+        Ok(PisOp::constant(value, params.extended_size))
+    }
+    pub fn next_imm_ext(&mut self, params: &CursorImmExtParams) -> Result<u64, CursorError> {
         assert!(params.extended_size >= params.encoded_size);
         let extended_to_64_bits = match params.encoded_size.bytes() {
             1 => {

@@ -13,6 +13,7 @@ mod cursor;
 mod error;
 mod regs;
 mod tmp_op_allocator;
+mod utils;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct PisSize {
@@ -20,15 +21,19 @@ pub struct PisSize {
 }
 impl PisSize {
     pub const B1: Self = Self {
+        // SAFETY: 1 != 0
         bytes: NonZeroU8::new(1).unwrap(),
     };
     pub const B2: Self = Self {
+        // SAFETY: 2 != 0
         bytes: NonZeroU8::new(2).unwrap(),
     };
     pub const B4: Self = Self {
+        // SAFETY: 4 != 0
         bytes: NonZeroU8::new(4).unwrap(),
     };
     pub const B8: Self = Self {
+        // SAFETY: 8 != 0
         bytes: NonZeroU8::new(8).unwrap(),
     };
     pub const fn bits(&self) -> u32 {
