@@ -140,6 +140,7 @@ impl PisOp {
 pub enum PisOpcode {
     Add,
     And,
+    MulUnsigned,
     Or,
     Xor,
 }

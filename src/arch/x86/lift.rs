@@ -124,6 +124,14 @@ pub struct Modrm {
     pub mod_val: B2,
 }
 
+#[bitpiece(8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Sib {
+    pub base: B3,
+    pub index: B3,
+    pub scale: B2,
+}
+
 struct DecodedOpcode {
     opcode_byte: u8,
     opcode_table: &'static OpcodeByteTable,

@@ -44,26 +44,40 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// adds the given 2 operands into a new tmp operand and returns it.
-    pub fn op_add(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+    /// performs the given binary operation on the given 2 operands into a new tmp operand and returns it.
+    ///
+    /// the provided opcode must be a binary operation opcode, which accepts 3 operands - a dst operand and 2 src operands.
+    fn op_binop(&mut self, opcode: PisOpcode, a: PisOp, b: PisOp) -> Result<PisOp> {
         assert_eq!(a.size, b.size);
         let tmp = self.tmp_op_allocator.alloc(a.size)?;
 
         self.res.insns.push(PisInsn {
-            opcode: PisOpcode::Add,
+            opcode,
             operands: array_vec![tmp.clone(), a, b],
         });
 
         Ok(tmp)
     }
 
-    /// adds the given value to the given destination operand.
-    pub fn op_add_assign(&mut self, dst: &mut PisOp, val: PisOp) {
-        assert_eq!(dst.size, val.size);
+    /// adds the given 2 operands into a new tmp operand and returns it.
+    pub fn op_add(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::Add, a, b)
+    }
 
-        self.res.insns.push(PisInsn {
-            opcode: PisOpcode::Add,
-            operands: array_vec![dst.clone(), dst.clone(), val],
-        });
+    /// performs an optional add operation on the given 2 operands.
+    /// the first operand is mandatory, but the second is optional.
+    /// if the second operand is none, the first operand is returned as is.
+    /// if the second operand is some value, it is added to the first operand, and the result is stored into a tmp, which is
+    /// then returned.
+    pub fn op_add_opt(&mut self, a: PisOp, b: Option<PisOp>) -> Result<PisOp> {
+        match b {
+            Some(b) => self.op_add(a, b),
+            None => Ok(a),
+        }
+    }
+
+    /// adds the given 2 operands into a new tmp operand and returns it.
+    pub fn op_mul_unsigned(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::MulUnsigned, a, b)
     }
 }
