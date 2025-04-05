@@ -44,7 +44,7 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// performs the given binary operation on the given 2 operands into a new tmp operand and returns it.
+    /// performs the given binary (two operand) operation on the given 2 operands into a new tmp operand and returns it.
     ///
     /// the provided opcode must be a binary operation opcode, which accepts 3 operands - a dst operand and 2 src operands.
     fn op_binop(&mut self, opcode: PisOpcode, a: PisOp, b: PisOp) -> Result<PisOp> {
@@ -54,6 +54,34 @@ impl<'a> Ctx<'a> {
         self.res.insns.push(PisInsn {
             opcode,
             operands: array_vec![tmp.clone(), a, b],
+        });
+
+        Ok(tmp)
+    }
+
+    /// performs the given unary (single operand) operation on the given operand into a new tmp operand and returns it.
+    ///
+    /// the provided opcode must be a unary operation opcode, which accepts 2 operands - a dst operand and a src operand.
+    fn op_unop(&mut self, opcode: PisOpcode, x: PisOp) -> Result<PisOp> {
+        let tmp = self.tmp_op_allocator.alloc(x.size)?;
+
+        self.res.insns.push(PisInsn {
+            opcode,
+            operands: array_vec![tmp.clone(), x],
+        });
+
+        Ok(tmp)
+    }
+
+    /// zero extends the given operand into a tmp operand and returns it
+    pub fn op_zext(&mut self, x: PisOp, new_size: PisSize) -> Result<PisOp> {
+        assert!(new_size >= x.size);
+
+        let tmp = self.tmp_op_allocator.alloc(new_size)?;
+
+        self.res.insns.push(PisInsn {
+            opcode: PisOpcode::Zext,
+            operands: array_vec![tmp.clone(), x],
         });
 
         Ok(tmp)

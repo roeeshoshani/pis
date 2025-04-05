@@ -10,7 +10,7 @@ use crate::{
 
 use super::{
     ctx::Ctx,
-    lift::{apply_rex_bit_to_reg_encoding, Modrm, Sib},
+    lift::{apply_rex_bit_to_reg_encoding, MemOp, Modrm, Sib},
     PisOp, PisSize, Result,
 };
 
@@ -18,17 +18,6 @@ use super::{
 ///
 /// this is just a thin wrapper to make the code more readable.
 struct MemOpAddr(PisOp);
-
-/// a modrm memory operand, for example `[rsp + 4]`.
-pub struct MemOp {
-    /// an operand which represents the address of the memory operand.
-    ///
-    /// for complex memory operands, this is usually a tmp operand which together with the emitted calculation contains the address.
-    pub addr: PisOp,
-
-    /// the size of the memory access for this memory operand.
-    pub size: PisSize,
-}
 
 /// the rm operand of a modrm byte.
 pub enum ModrmRmOp {

@@ -1,5 +1,6 @@
 use super::{
     ctx::{Ctx, CtxPostPrefixes},
+    modrm::{modrm_decode_rm_operand, ModrmRmOp},
     prefixes::LegacyPrefix,
     tables::{OpInfo, RegularInsnInfo, SpecificReg},
     tmp_op_allocator::TmpOpAllocator,
@@ -18,9 +19,21 @@ use super::{
     X86LiftErr, X86SpecificLiftErr,
 };
 
+/// a memory operand, for example `[rsp + 4]`.
+pub struct MemOp {
+    /// an operand which represents the address of the memory operand.
+    ///
+    /// for complex memory operands, this is usually a tmp operand which together with the emitted calculation contains the address.
+    pub addr: PisOp,
+
+    /// the size of the memory access for this memory operand.
+    pub size: PisSize,
+}
+
 pub enum LiftedOp {
     Value(PisOp),
     Reg(PisOp),
+    Mem(MemOp),
     Implicit(PisSize),
 }
 
@@ -73,18 +86,43 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             let size = reg.size.resolve(ctx);
             Ok(LiftedOp::Reg(ctx.decode_reg(reg_encoding, size)))
         }
-        OpInfo::Rm(op_size_info) => todo!(),
-        OpInfo::SpecificReg(specific_reg) => {
-            let reg_encoding = match specific_reg.reg {
-                SpecificReg::Rax => 0,
-                SpecificReg::Rcx => 2,
-                SpecificReg::Rdx => 1,
-            };
-            let size = specific_reg.size.resolve(ctx);
-            Ok(LiftedOp::Reg(ctx.decode_reg(reg_encoding, size)))
+        OpInfo::Rm(size_info) => {
+            let size = size_info.resolve(ctx);
+            let rm_operand = modrm_decode_rm_operand(ctx, size)?;
+            match rm_operand {
+                ModrmRmOp::Mem(mem_op) => Ok(LiftedOp::Mem(mem_op)),
+                ModrmRmOp::Reg(reg) => Ok(LiftedOp::Reg(reg)),
+            }
         }
-        OpInfo::ZextSpecificReg(zext_specific_reg_op_info) => todo!(),
-        OpInfo::Rel(op_size_info) => todo!(),
+        OpInfo::SpecificReg(info) => {
+            let size = info.size.resolve(ctx);
+
+            let reg_encoding = info.reg.reg_encoding();
+            let reg = ctx.decode_reg(reg_encoding, size);
+
+            Ok(LiftedOp::Reg(reg))
+        }
+        OpInfo::ZextSpecificReg(info) => {
+            let size = info.size.resolve(ctx);
+            let extended_size = info.extended_size.resolve(ctx);
+
+            let reg_encoding = info.reg.reg_encoding();
+            let reg = ctx.decode_reg(reg_encoding, size);
+
+            let extended_reg = ctx.op_zext(reg, extended_size)?;
+
+            Ok(LiftedOp::Value(extended_reg))
+        }
+        OpInfo::Rel(size_info) => {
+            let size = size_info.resolve(ctx);
+            let rel_offset = ctx.args.code.next_imm_ext_op(&CursorImmExtParams {
+                encoded_size: size,
+                extended_size: ctx.addr_size,
+                ext_kind: crate::ImmExtKind::Sign,
+                endianness: PisEndianness::Little,
+            })?;
+            todo!()
+        }
         OpInfo::MemOffset(mem_offset_op_info) => todo!(),
         OpInfo::Implicit(size_info) => {
             // implicit operands are only used to determine the operand size.

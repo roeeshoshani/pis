@@ -2,9 +2,9 @@ use arrayvec::ArrayVec;
 use const_for::const_for;
 use delve::{EnumDisplay, EnumToStr, EnumVariantNames};
 
-use crate::{ImmExtKind, PisSize};
+use crate::{ImmExtKind, PisOp, PisSize};
 
-use super::{ctx::Ctx, prefixes::LegacyPrefix, X86Cpumode};
+use super::{ctx::Ctx, prefixes::LegacyPrefix, X86Cpumode, X86_REG_RAX, X86_REG_RCX, X86_REG_RDX};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Mnemonic {
@@ -177,11 +177,20 @@ pub struct RegOpInfo {
     pub size: OpSizeInfo,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumVariantNames, EnumToStr)]
+/// a specific register.
+///
+/// the values of each variant is the encoding of the register it represents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumVariantNames, EnumToStr)]
+#[repr(u8)]
 pub enum SpecificReg {
-    Rax,
-    Rcx,
-    Rdx,
+    Rax = 0,
+    Rdx = 1,
+    Rcx = 2,
+}
+impl SpecificReg {
+    pub fn reg_encoding(&self) -> u8 {
+        *self as u8
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

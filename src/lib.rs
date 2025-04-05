@@ -143,6 +143,7 @@ pub enum PisOpcode {
     MulUnsigned,
     Or,
     Xor,
+    Zext,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
