@@ -130,6 +130,28 @@ fn decode_sib(ctx: &mut Ctx, modrm: Modrm) -> Result<PisOp> {
     ctx.op_add_opt(base_op, maybe_scaled_index)
 }
 
+/// decodes the address of the modrm memory operand in 32 or 64 bit address size, in the non-special case.
+/// the special case is the case where mod==00 and rm==101, which is [disp32] in 32 bit address size, and it is [rip+x] in 64 bit
+/// address size.
+fn decode_rm_memory_32_64_non_special(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
+    let rm = modrm.rm().get();
+
+    // handle base regs
+    let base_regs = if rm == 0b100 {
+        decode_sib(ctx, modrm)?
+    } else {
+        ctx.decode_reg(
+            apply_rex_bit_to_reg_encoding(rm, ctx.prefixes.has_rex_b()),
+            PisSize::B8,
+        )
+    };
+
+    // apply the disaplacement
+    let addr = decode_and_apply_disp(ctx, base_regs)?;
+
+    Ok(MemOpAddr(addr))
+}
+
 fn decode_rm_memory_64(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
     let mod_val = modrm.mod_val().get();
     let rm = modrm.rm().get();
@@ -151,43 +173,20 @@ fn decode_rm_memory_64(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
         return Ok(MemOpAddr(ctx.op_add(X86_REG_RIP, disp)?));
     }
 
-    // handle base regs
-    let base_regs = if rm == 0b100 {
-        decode_sib(ctx, modrm)?
-    } else {
-        ctx.decode_reg(
-            apply_rex_bit_to_reg_encoding(rm, ctx.prefixes.has_rex_b()),
-            PisSize::B8,
-        )
-    };
-
-    // apply the disaplacement
-    let addr = decode_and_apply_disp(ctx, base_regs)?;
-
-    Ok(MemOpAddr(addr))
+    decode_rm_memory_32_64_non_special(ctx, modrm)
 }
 
 fn decode_rm_memory_32(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
     let mod_val = modrm.mod_val().get();
     let rm = modrm.rm().get();
 
-    if mod_val == 0b00 && rm == 0b110 {
+    if mod_val == 0b00 && rm == 0b101 {
         // special case for 32 bit displacement only
         let addr = ctx.args.code.next_imm(PisSize::B4, PisEndianness::Little)?;
         return Ok(MemOpAddr(PisOp::constant(addr, ctx.addr_size)));
     }
 
-    // handle base regs
-    let base_regs = if rm == 0b100 {
-        decode_sib(ctx, modrm)?
-    } else {
-        ctx.decode_reg(rm, PisSize::B4)
-    };
-
-    // apply the disaplacement
-    let addr = decode_and_apply_disp(ctx, base_regs)?;
-
-    Ok(MemOpAddr(addr))
+    decode_rm_memory_32_64_non_special(ctx, modrm)
 }
 
 fn decode_rm_memory_16(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
@@ -225,7 +224,8 @@ fn decode_rm_memory(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
         PisSize::B2 => decode_rm_memory_16(ctx, modrm),
         PisSize::B4 => decode_rm_memory_32(ctx, modrm),
         PisSize::B8 => decode_rm_memory_64(ctx, modrm),
-        _ => todo!(),
+        // we covered all possible address sizes
+        _ => unreachable!(),
     }
 }
 
