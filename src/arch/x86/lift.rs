@@ -4,7 +4,7 @@ use super::{
     prefixes::LegacyPrefix,
     tables::{OpInfo, RegularInsnInfo, SpecificReg},
     tmp_op_allocator::TmpOpAllocator,
-    LiftRes, Result,
+    LiftRes, Result, X86Cpumode, X86_REG_RIP,
 };
 use crate::{
     arch::x86::tables::{InsnInfo, Mnemonic, RegEncoding},
@@ -57,9 +57,33 @@ impl<'a> Ctx<'a> {
     }
 }
 
+/// calculates the mask that needs to be applied to the ip value after updating it due to a relative branch.
+fn calc_near_branch_ip_mask(ctx: &Ctx) -> u64 {
+    match ctx.cpumode {
+        X86Cpumode::B32 => {
+            // in 32-bit mode the mask depends on the presence of the operand size override prefix.
+            if ctx
+                .prefixes
+                .has_legacy_prefix(LegacyPrefix::OperandSizeOverride)
+            {
+                // with operand size override, the ip is masked to 16 bits
+                u16::MAX as u64
+            } else {
+                // without operand size override, the ip is masked to 32 bits
+                u32::MAX as u64
+            }
+        }
+        X86Cpumode::B64 => {
+            // in 64-bit mode, the ip value is always limited to 64-bits, regardless of prefixes
+            return u64::MAX;
+        }
+    }
+}
+
 fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
     match op {
         OpInfo::Imm(imm) => {
+            // an immediate encoded in the instruction
             let extended_size = imm.extended_size.resolve(ctx);
             let imm = ctx.args.code.next_imm_ext_op(&CursorImmExtParams {
                 encoded_size: imm.encoded_size.resolve(ctx),
@@ -70,10 +94,12 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             Ok(LiftedOp::Value(imm))
         }
         OpInfo::SpecificImm(specific_imm) => {
+            // an immediate operand with a specific opcode-hardcoded value
             let size = specific_imm.operand_size.resolve(ctx);
             Ok(LiftedOp::Value(PisOp::constant(specific_imm.value, size)))
         }
         OpInfo::Reg(reg) => {
+            // a register operand
             let reg_encoding = match reg.encoding {
                 RegEncoding::Modrm => apply_rex_bit_to_reg_encoding(
                     ctx.modrm()?.reg().get(),
@@ -87,6 +113,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             Ok(LiftedOp::Reg(ctx.decode_reg(reg_encoding, size)))
         }
         OpInfo::Rm(size_info) => {
+            // a modrm rm operand
             let size = size_info.resolve(ctx);
             let rm_operand = modrm_decode_rm_operand(ctx, size)?;
             match rm_operand {
@@ -95,6 +122,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             }
         }
         OpInfo::SpecificReg(info) => {
+            // a specific register
             let size = info.size.resolve(ctx);
 
             let reg_encoding = info.reg.reg_encoding();
@@ -103,6 +131,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             Ok(LiftedOp::Reg(reg))
         }
         OpInfo::ZextSpecificReg(info) => {
+            // a specific register, zero extended to a certain value.
             let size = info.size.resolve(ctx);
             let extended_size = info.extended_size.resolve(ctx);
 
@@ -114,6 +143,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             Ok(LiftedOp::Value(extended_reg))
         }
         OpInfo::Rel(size_info) => {
+            // a relative operand. used for near branches.
             let size = size_info.resolve(ctx);
             let rel_offset = ctx.args.code.next_imm_ext_op(&CursorImmExtParams {
                 encoded_size: size,
@@ -121,9 +151,20 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
                 ext_kind: crate::ImmExtKind::Sign,
                 endianness: PisEndianness::Little,
             })?;
-            todo!()
+            let mask = calc_near_branch_ip_mask(ctx);
+            Ok(LiftedOp::Value(
+                ctx.op_and(X86_REG_RIP, PisOp::constant(mask, PisSize::B8))?,
+            ))
         }
-        OpInfo::MemOffset(mem_offset_op_info) => todo!(),
+        OpInfo::MemOffset(info) => {
+            // abs memory addr encoded as immediate
+            let addr = ctx
+                .args
+                .code
+                .next_imm_op(ctx.addr_size, PisEndianness::Little)?;
+            let size = info.mem_operand_size.resolve(ctx);
+            Ok(LiftedOp::Mem(MemOp { addr, size }))
+        }
         OpInfo::Implicit(size_info) => {
             // implicit operands are only used to determine the operand size.
             let size = size_info.resolve(ctx);

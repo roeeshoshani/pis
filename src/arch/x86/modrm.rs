@@ -153,12 +153,6 @@ fn decode_rm_memory_64(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
             ext_kind: ImmExtKind::Sign,
             endianness: PisEndianness::Little,
         })?;
-        // we want to use the value of RIP here, but we have no way of calculating it at this point.
-        // to calculate RIP, we need to know the full length of the instruction, but at this point, we are only decoding the modrm
-        // byte, which may be followed by some additional bytes representing for example an immediate operand, but we don't know it
-        // at this point.
-        // so, we use the RIP register, which will later be resolved by the lifter to the actual address after we determine the full
-        // length of the instruction.
         return Ok(MemOpAddr(ctx.op_add(X86_REG_RIP, disp)?));
     }
 

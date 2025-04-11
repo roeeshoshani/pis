@@ -92,6 +92,11 @@ impl<'a> Ctx<'a> {
         self.op_binop(PisOpcode::Add, a, b)
     }
 
+    /// "bitwise-and"s the given 2 operands into a new tmp operand and returns it.
+    pub fn op_and(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::And, a, b)
+    }
+
     /// performs an optional add operation on the given 2 operands.
     /// the first operand is mandatory, but the second is optional.
     /// if the second operand is none, the first operand is returned as is.
