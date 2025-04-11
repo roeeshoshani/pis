@@ -253,7 +253,10 @@ impl X86Cpumode {
 
 fn lift_one_with_cpumode(args: LiftArgs, cpumode: X86Cpumode) -> Result<LiftRes> {
     // parse prefixes
-    let mut ctx_initial = CtxInitial { cpumode, args };
+    let mut ctx_initial = CtxInitial {
+        cpumode,
+        args: args.into_internal(),
+    };
     let prefixes = parse_prefixes(&mut ctx_initial)?;
 
     // continue to parsing the rest of the instruction
@@ -262,8 +265,7 @@ fn lift_one_with_cpumode(args: LiftArgs, cpumode: X86Cpumode) -> Result<LiftRes>
         cpumode,
         prefixes,
     };
-    lift_post_prefixes(ctx_post_prefixes)?;
-    todo!()
+    lift_post_prefixes(ctx_post_prefixes)
 }
 
 pub struct PisProcessorX64;

@@ -1,6 +1,6 @@
 use bitpiece::BitPiece;
 
-use crate::{pis_insn, utils::array_vec, LiftArgs, PisInsn, PisOp, PisOpcode};
+use crate::{pis_insn, utils::array_vec, LiftArgsInternal, PisInsn, PisOp, PisOpcode};
 
 use super::{
     lift::Modrm, prefixes::Prefixes, tables::OpcodeByteTable, tmp_op_allocator::TmpOpAllocator,
@@ -9,20 +9,20 @@ use super::{
 
 /// the initial context after just getting the lift args and deciding the desired cpumode
 pub struct CtxInitial<'a> {
-    pub args: LiftArgs<'a>,
+    pub args: LiftArgsInternal<'a>,
     pub cpumode: X86Cpumode,
 }
 
 /// the context after parsing prefixes
 pub struct CtxPostPrefixes<'a> {
-    pub args: LiftArgs<'a>,
+    pub args: LiftArgsInternal<'a>,
     pub cpumode: X86Cpumode,
     pub prefixes: Prefixes,
 }
 
 /// the final context after parsing the instruction's opcode
 pub struct Ctx<'a> {
-    pub args: LiftArgs<'a>,
+    pub args: LiftArgsInternal<'a>,
     pub cpumode: X86Cpumode,
     pub prefixes: Prefixes,
     pub opcode_byte: u8,

@@ -1,13 +1,18 @@
 use hex_literal::hex;
 use pis::{LiftArgs, LiftRes, PisCursor, PisProcessor, PisProcessorX64};
 
-/// lifts the given array of bytes
-fn lift(code: &[u8]) -> LiftRes {
+/// lifts the given array of bytes at the given machine code addr.
+fn lift_at(code: &[u8], machine_code_addr: u64) -> LiftRes {
     PisProcessorX64::lift_one(LiftArgs {
-        code: &mut PisCursor::new(code),
-        machine_code_addr: 0,
+        code,
+        machine_code_addr,
     })
     .unwrap()
+}
+
+/// lifts the given array of bytes
+fn lift(code: &[u8]) -> LiftRes {
+    lift_at(code, 0)
 }
 
 /// lifts the given array of bytes and expects the single lifted instruction to cover the entire buffer.

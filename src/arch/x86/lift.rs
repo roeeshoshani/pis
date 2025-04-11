@@ -483,7 +483,7 @@ fn calc_addr_size(ctx: &CtxPostPrefixes) -> PisSize {
     }
 }
 
-pub fn lift_post_prefixes(mut ctx: CtxPostPrefixes) -> Result<()> {
+pub fn lift_post_prefixes(mut ctx: CtxPostPrefixes) -> Result<LiftRes> {
     let decoded_opcode = decode_opcode(&mut ctx)?;
     let addr_size = calc_addr_size(&ctx);
     let stack_addr_size = calc_stack_addr_size(&ctx);
@@ -499,5 +499,9 @@ pub fn lift_post_prefixes(mut ctx: CtxPostPrefixes) -> Result<()> {
         res: LiftRes::new(),
         tmp_op_allocator: TmpOpAllocator::new(),
     };
-    lift_post_opcode_decode(&mut final_ctx)
+    lift_post_opcode_decode(&mut final_ctx)?;
+    Ok(LiftRes {
+        insns: final_ctx.res.insns,
+        machine_insn_len: todo!(),
+    })
 }

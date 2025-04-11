@@ -254,10 +254,25 @@ impl<T> From<TooManyTmpsErr> for LiftErr<T> {
 }
 
 pub struct LiftArgs<'a> {
-    pub code: &'a mut PisCursor<'a>,
+    pub code: &'a [u8],
     pub machine_code_addr: u64,
 }
 impl<'a> LiftArgs<'a> {
+    fn into_internal(self) -> LiftArgsInternal<'a> {
+        LiftArgsInternal {
+            code: PisCursor::new(self.code),
+            machine_code_addr: self.machine_code_addr,
+        }
+    }
+}
+
+/// internal lift args. the lift args type is designed to be convenient for use by api users.
+/// this internal type is designed to be more convenient for internal implementations of the lifters.
+struct LiftArgsInternal<'a> {
+    pub code: PisCursor<'a>,
+    pub machine_code_addr: u64,
+}
+impl<'a> LiftArgsInternal<'a> {
     /// returns the address in memory where the code cursor currently points to
     pub fn cur_code_addr(&mut self) -> u64 {
         self.machine_code_addr + self.code.off() as u64
