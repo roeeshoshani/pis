@@ -52,9 +52,19 @@ impl PisEmu {
         Ok(mem_val.value)
     }
     fn write_mem_byte(&mut self, addr: W64, value: u8) -> Result<()> {
-        self.mem_vals
-            .push(MemVal { addr, value })
-            .map_err(|_| PisEmuErr::TooManyMemVals)
+        match self
+            .mem_vals
+            .iter_mut()
+            .find(|mem_val| mem_val.addr == addr)
+        {
+            Some(mem_val) => mem_val.value = value,
+            None => {
+                self.mem_vals
+                    .push(MemVal { addr, value })
+                    .map_err(|_| PisEmuErr::TooManyMemVals)?;
+            }
+        }
+        Ok(())
     }
     pub fn read_mem(&self, addr: W64, read_size: PisSize) -> Result<W64> {
         let size = read_size.bytes() as usize;
@@ -102,9 +112,14 @@ impl PisEmu {
         }
     }
     pub fn write_op(&mut self, op: PisOp, value: W64) -> Result<()> {
-        self.op_vals
-            .push(OpVal { op, value })
-            .map_err(|_| PisEmuErr::TooManyOpVals)
+        match self.op_vals.iter_mut().find(|op_val| op_val.op == op) {
+            Some(op_val) => op_val.value = value,
+            None => self
+                .op_vals
+                .push(OpVal { op, value })
+                .map_err(|_| PisEmuErr::TooManyOpVals)?,
+        }
+        Ok(())
     }
     fn run_binop(&mut self, insn: PisInsn, calc: BinopCalc) -> Result<()> {
         assert_eq!(insn.operands.len(), 3);
@@ -242,6 +257,9 @@ impl<T, const MAX_SIZE: usize> LimitedVec<T, MAX_SIZE> {
     }
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
         self.0.iter()
+    }
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+        self.0.iter_mut()
     }
 }
 

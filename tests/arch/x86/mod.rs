@@ -53,6 +53,9 @@ fn lift_add() {
     let [rax, rbx, rdi, mem_value] = choose_magics();
     let addr = rbx + rdi * Wrapping(4) - Wrapping(7);
     let result = rax + mem_value;
+    println!("rax = {rax}");
+    println!("mem_value = {mem_value}");
+    println!("result = {result}");
 
     let mut emu = mk_emu();
     emu.write_op(X86_REG_RAX, rax).unwrap();
