@@ -12,7 +12,7 @@ use crate::{
     cursor::CursorImmExtParams,
     pis_insn,
     utils::array_vec,
-    LiftErr, PisEndianness, PisInsn, PisOp, PisOpcode, PisSize,
+    LiftErr, MachineInsnLen, PisEndianness, PisInsn, PisOp, PisOpcode, PisSize,
 };
 use arrayvec::ArrayVec;
 use bitpiece::*;
@@ -502,6 +502,8 @@ pub fn lift_post_prefixes(mut ctx: CtxPostPrefixes) -> Result<LiftRes> {
     lift_post_opcode_decode(&mut final_ctx)?;
     Ok(LiftRes {
         insns: final_ctx.res.insns,
-        machine_insn_len: todo!(),
+        machine_insn_len: MachineInsnLen {
+            bytes: final_ctx.args.code.off() as u8,
+        },
     })
 }
