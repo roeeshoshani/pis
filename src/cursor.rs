@@ -13,11 +13,11 @@ impl<'a> PisCursor<'a> {
     pub fn off(&self) -> usize {
         self.off
     }
-    fn check_advance(&self, amount: usize) -> Result<(), CursorError> {
+    fn check_advance(&self, amount: usize) -> Result<(), CursorErr> {
         let new_off = self.off + amount;
 
         if new_off > self.data.len() {
-            Err(CursorError::EarlyEof {
+            Err(CursorErr::EarlyEof {
                 required_bytes_amount: new_off,
                 actual_bytes_amount: self.data.len(),
             })
@@ -25,44 +25,40 @@ impl<'a> PisCursor<'a> {
             Ok(())
         }
     }
-    pub fn peek_bytes(&self, amount: usize) -> Result<&'a [u8], CursorError> {
+    pub fn peek_bytes(&self, amount: usize) -> Result<&'a [u8], CursorErr> {
         self.check_advance(amount)?;
         Ok(&self.data[self.off..self.off + amount])
     }
-    pub fn next_bytes(&mut self, amount: usize) -> Result<&'a [u8], CursorError> {
+    pub fn next_bytes(&mut self, amount: usize) -> Result<&'a [u8], CursorErr> {
         let result = self.peek_bytes(amount)?;
         self.off += amount;
         Ok(result)
     }
-    pub fn peek_array<const SIZE: usize>(&self) -> Result<[u8; SIZE], CursorError> {
+    pub fn peek_array<const SIZE: usize>(&self) -> Result<[u8; SIZE], CursorErr> {
         self.check_advance(SIZE)?;
         // SAFETY: the data that we slice is of length `SIZE`, so converting it to an array of that size will never fail.
         Ok(self.data[self.off..self.off + SIZE].try_into().unwrap())
     }
-    pub fn next_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE], CursorError> {
+    pub fn next_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE], CursorErr> {
         let result = self.peek_array::<SIZE>()?;
         self.off += SIZE;
         Ok(result)
     }
-    pub fn advance(&mut self, amount: usize) -> Result<(), CursorError> {
+    pub fn advance(&mut self, amount: usize) -> Result<(), CursorErr> {
         self.check_advance(amount)?;
         self.off += amount;
         Ok(())
     }
-    pub fn advance_byte(&mut self) -> Result<(), CursorError> {
+    pub fn advance_byte(&mut self) -> Result<(), CursorErr> {
         self.advance(1)
     }
-    pub fn peek_byte(&self) -> Result<u8, CursorError> {
+    pub fn peek_byte(&self) -> Result<u8, CursorErr> {
         Ok(self.peek_bytes(1)?[0])
     }
-    pub fn next_byte(&mut self) -> Result<u8, CursorError> {
+    pub fn next_byte(&mut self) -> Result<u8, CursorErr> {
         Ok(self.next_bytes(1)?[0])
     }
-    pub fn next_imm(
-        &mut self,
-        size: PisSize,
-        endianness: PisEndianness,
-    ) -> Result<u64, CursorError> {
+    pub fn next_imm(&mut self, size: PisSize, endianness: PisEndianness) -> Result<u64, CursorErr> {
         self.next_imm_ext(&CursorImmExtParams {
             encoded_size: size,
             extended_size: size,
@@ -74,15 +70,15 @@ impl<'a> PisCursor<'a> {
         &mut self,
         size: PisSize,
         endianness: PisEndianness,
-    ) -> Result<PisOp, CursorError> {
+    ) -> Result<PisOp, CursorErr> {
         let value = self.next_imm(size, endianness)?;
         Ok(PisOp::constant(value, size))
     }
-    pub fn next_imm_ext_op(&mut self, params: &CursorImmExtParams) -> Result<PisOp, CursorError> {
+    pub fn next_imm_ext_op(&mut self, params: &CursorImmExtParams) -> Result<PisOp, CursorErr> {
         let value = self.next_imm_ext(params)?;
         Ok(PisOp::constant(value, params.extended_size))
     }
-    pub fn next_imm_ext(&mut self, params: &CursorImmExtParams) -> Result<u64, CursorError> {
+    pub fn next_imm_ext(&mut self, params: &CursorImmExtParams) -> Result<u64, CursorErr> {
         assert!(params.extended_size >= params.encoded_size);
         let extended_to_64_bits = match params.encoded_size.bytes() {
             1 => {
@@ -137,7 +133,7 @@ pub struct CursorImmExtParams {
 }
 
 #[derive(Debug, Error)]
-pub enum CursorError {
+pub enum CursorErr {
     EarlyEof {
         required_bytes_amount: usize,
         actual_bytes_amount: usize,

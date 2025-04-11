@@ -9,13 +9,15 @@ use tmp_op_allocator::TooManyTmpsErr;
 
 mod arch;
 mod cursor;
+mod emu;
 mod error;
 mod regs;
 mod tmp_op_allocator;
 mod utils;
 
 pub use arch::x86::*;
-pub use cursor::{CursorError, PisCursor};
+pub use cursor::{CursorErr, PisCursor};
+pub use emu::*;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct PisSize {
@@ -235,9 +237,9 @@ pub enum LiftErr<T> {
     #[error("arch specific error: {0}")]
     ArchSpecific(T),
 }
-impl<T> From<CursorError> for LiftErr<T> {
-    fn from(value: CursorError) -> Self {
-        let CursorError::EarlyEof {
+impl<T> From<CursorErr> for LiftErr<T> {
+    fn from(value: CursorErr) -> Self {
+        let CursorErr::EarlyEof {
             required_bytes_amount,
             actual_bytes_amount,
         } = value;

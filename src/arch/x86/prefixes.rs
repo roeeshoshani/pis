@@ -6,7 +6,7 @@ use enum_all_values_const::AllValues;
 
 use super::Result;
 use crate::{
-    cursor::{CursorError, PisCursor},
+    cursor::{CursorErr, PisCursor},
     LiftErr,
 };
 

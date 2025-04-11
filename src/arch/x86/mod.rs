@@ -238,7 +238,7 @@ pub type X86LiftErr = LiftErr<X86SpecificLiftErr>;
 type Result<T> = core::result::Result<T, X86LiftErr>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum X86Cpumode {
+enum X86Cpumode {
     B32,
     B64,
 }

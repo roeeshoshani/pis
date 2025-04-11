@@ -1,5 +1,5 @@
 use hex_literal::hex;
-use pis::{LiftArgs, LiftRes, PisCursor, PisProcessor, PisProcessorX64};
+use pis::{LiftArgs, LiftRes, PisEmu, PisProcessor, PisProcessorX64};
 
 /// lifts the given array of bytes at the given machine code addr.
 fn lift_at(code: &[u8], machine_code_addr: u64) -> LiftRes {
@@ -27,5 +27,9 @@ fn lift_add() {
     // add rax, [rbx+rdi*4 - 7]
     let code = hex!("48 03 44 bb f9");
     let res = lift_single_insn(&code);
+    let mut emu = PisEmu::new();
+    for insn in res.insns {
+        emu.run(insn).unwrap();
+    }
     todo!()
 }

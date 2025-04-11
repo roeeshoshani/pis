@@ -22,8 +22,8 @@ pub struct CtxPostPrefixes<'a> {
 
 /// the final context after parsing the instruction's opcode
 pub struct Ctx<'a> {
-    pub args: LiftArgsInternal<'a>,
-    pub cpumode: X86Cpumode,
+    pub(super) args: LiftArgsInternal<'a>,
+    pub(super) cpumode: X86Cpumode,
     pub prefixes: Prefixes,
     pub opcode_byte: u8,
     pub opcode_table: &'static OpcodeByteTable,
