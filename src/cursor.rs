@@ -2,11 +2,11 @@ use thiserror_no_std::Error;
 
 use crate::{ImmExtKind, PisEndianness, PisOp, PisSize};
 
-pub struct Cursor<'a> {
+pub struct PisCursor<'a> {
     data: &'a [u8],
     off: usize,
 }
-impl<'a> Cursor<'a> {
+impl<'a> PisCursor<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         Self { data, off: 0 }
     }

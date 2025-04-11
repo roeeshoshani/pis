@@ -243,7 +243,7 @@ pub enum X86Cpumode {
     B64,
 }
 impl X86Cpumode {
-    pub fn operand_size(&self) -> PisSize {
+    fn operand_size(&self) -> PisSize {
         match self {
             X86Cpumode::B32 => PisSize::B4,
             X86Cpumode::B64 => PisSize::B8,

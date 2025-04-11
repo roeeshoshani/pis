@@ -14,3 +14,6 @@ thiserror-no-std = "2.0.2"
 
 [features]
 std = ["thiserror-no-std/std"]
+
+[dev-dependencies]
+hex-literal = "1.0.0"

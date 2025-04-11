@@ -3,7 +3,6 @@
 use std::num::NonZeroU8;
 
 use arrayvec::ArrayVec;
-use cursor::{Cursor, CursorError};
 use primwrap::Primitive;
 use thiserror_no_std::Error;
 use tmp_op_allocator::TooManyTmpsErr;
@@ -14,6 +13,9 @@ mod error;
 mod regs;
 mod tmp_op_allocator;
 mod utils;
+
+pub use arch::x86::*;
+pub use cursor::{CursorError, PisCursor};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct PisSize {
@@ -252,8 +254,8 @@ impl<T> From<TooManyTmpsErr> for LiftErr<T> {
 }
 
 pub struct LiftArgs<'a> {
-    code: &'a mut Cursor<'a>,
-    machine_code_addr: u64,
+    pub code: &'a mut PisCursor<'a>,
+    pub machine_code_addr: u64,
 }
 impl<'a> LiftArgs<'a> {
     /// returns the address in memory where the code cursor currently points to
