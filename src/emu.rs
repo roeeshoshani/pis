@@ -13,6 +13,9 @@ struct OpVal {
     value: u64,
 }
 
+/// a binary operator calculation.
+type BinopCalc = fn(lhs: u64, rhs: u64) -> u64;
+
 /// an emulator of pis instructions.
 pub struct PisEmu {
     op_vals: LimitedVec<OpVal, MAX_OP_VALS>,
@@ -36,6 +39,18 @@ impl PisEmu {
             .push(OpVal { op, value })
             .map_err(|_| PisEmuErr::TooManyOpVals)
     }
+    fn run_binop(&mut self, insn: PisInsn, calc: BinopCalc) -> Result<()> {
+        assert_eq!(insn.operands.len(), 3);
+
+        let lhs = self.read_op(insn.operands[1])?;
+        let rhs = self.read_op(insn.operands[2])?;
+
+        let result = calc(lhs, rhs);
+
+        self.write_op(insn.operands[0], result)?;
+
+        Ok(())
+    }
     pub fn run(&mut self, insn: PisInsn) -> Result<()> {
         match insn.opcode {
             PisOpcode::Move => {
@@ -46,17 +61,17 @@ impl PisEmu {
             }
             PisOpcode::Load => todo!(),
             PisOpcode::Store => todo!(),
-            PisOpcode::Add => todo!(),
-            PisOpcode::And => todo!(),
-            PisOpcode::MulUnsigned => todo!(),
-            PisOpcode::Or => todo!(),
-            PisOpcode::Xor => todo!(),
+            PisOpcode::Add => self.run_binop(insn, |a, b| a + b),
+            PisOpcode::And => self.run_binop(insn, |a, b| a & b),
+            PisOpcode::MulUnsigned => self.run_binop(insn, |a, b| a * b),
+            PisOpcode::Or => self.run_binop(insn, |a, b| (a | b)),
+            PisOpcode::Xor => self.run_binop(insn, |a, b| a ^ b),
             PisOpcode::Zext => todo!(),
             PisOpcode::UnsignedCarry => todo!(),
             PisOpcode::SignedCarry => todo!(),
             PisOpcode::Parity => todo!(),
-            PisOpcode::Equals => todo!(),
-            PisOpcode::ShiftRightUnsigned => todo!(),
+            PisOpcode::Equals => self.run_binop(insn, |a, b| if a == b { 1 } else { 0 }),
+            PisOpcode::ShiftRightUnsigned => self.run_binop(insn, |a, b| a >> b),
             PisOpcode::Trunc => todo!(),
             PisOpcode::CondNeg => todo!(),
         }
