@@ -2,8 +2,7 @@ use std::num::Wrapping;
 
 use hex_literal::hex;
 use pis::{
-    LiftArgs, LiftRes, PisEmu, PisOp, PisProcessor, PisProcessorX64, W64, X86_REG_RAX, X86_REG_RBX,
-    X86_REG_RDI,
+    LiftArgs, PisEmu, PisProcessor, PisProcessorX64, W64, X86_REG_RAX, X86_REG_RBX, X86_REG_RDI,
 };
 
 const MAGICS: &[W64] = &[

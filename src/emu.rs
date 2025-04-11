@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use thiserror_no_std::Error;
 
-use crate::{PisInsn, PisOp, PisOpcode};
+use crate::{PisInsn, PisOp, PisOpcode, PisSpace};
 
 type Result<T> = core::result::Result<T, PisEmuErr>;
 
@@ -30,13 +30,21 @@ impl PisEmu {
             op_vals: LimitedVec::new(),
         }
     }
-    pub fn read_op(&self, op: PisOp) -> Result<W64> {
+    pub fn read_var_op(&self, op: PisOp) -> Result<W64> {
         let op_val = self
             .op_vals
             .iter()
             .find(|op_val| op_val.op == op)
             .ok_or(PisEmuErr::ReadUninitOp(op))?;
         Ok(op_val.value)
+    }
+    pub fn read_op(&self, op: PisOp) -> Result<W64> {
+        match op.space {
+            PisSpace::Reg => self.read_var_op(op),
+            PisSpace::Tmp => self.read_var_op(op),
+            PisSpace::Const => Ok(Wrapping(op.offset.0)),
+            PisSpace::Ram => unreachable!(),
+        }
     }
     pub fn write_op(&mut self, op: PisOp, value: W64) -> Result<()> {
         self.op_vals
