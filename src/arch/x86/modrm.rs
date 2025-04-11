@@ -5,7 +5,7 @@ use bitpiece::BitPiece;
 use crate::{
     arch::x86::{X86_REG_BP, X86_REG_BX, X86_REG_DI, X86_REG_RIP, X86_REG_SI},
     cursor::CursorImmExtParams,
-    ImmExtKind, PisEndianness,
+    ImmExtKind, PisEndian,
 };
 
 use super::{
@@ -41,7 +41,7 @@ fn decode_disp(ctx: &mut Ctx) -> Result<Option<PisOp>> {
                 encoded_size: PisSize::B1,
                 extended_size: ctx.addr_size,
                 ext_kind: ImmExtKind::Sign,
-                endianness: PisEndianness::Little,
+                endian: PisEndian::Little,
             })?;
             Ok(Some(disp))
         }
@@ -55,7 +55,7 @@ fn decode_disp(ctx: &mut Ctx) -> Result<Option<PisOp>> {
                 encoded_size,
                 extended_size: ctx.addr_size,
                 ext_kind: ImmExtKind::Sign,
-                endianness: PisEndianness::Little,
+                endian: PisEndian::Little,
             })?;
 
             Ok(Some(disp))
@@ -92,7 +92,7 @@ fn decode_sib(ctx: &mut Ctx, modrm: Modrm) -> Result<PisOp> {
             encoded_size: PisSize::B4,
             extended_size: ctx.addr_size,
             ext_kind: ImmExtKind::Zero,
-            endianness: PisEndianness::Little,
+            endian: PisEndian::Little,
         })?
     } else {
         // normal case, the base is a register
@@ -151,7 +151,7 @@ fn decode_rm_memory_64(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
             encoded_size: PisSize::B4,
             extended_size: PisSize::B8,
             ext_kind: ImmExtKind::Sign,
-            endianness: PisEndianness::Little,
+            endian: PisEndian::Little,
         })?;
         return Ok(MemOpAddr(ctx.op_add(X86_REG_RIP, disp)?));
     }
@@ -165,7 +165,7 @@ fn decode_rm_memory_32(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
 
     if mod_val == 0b00 && rm == 0b101 {
         // special case for 32 bit displacement only
-        let addr = ctx.args.code.next_imm(PisSize::B4, PisEndianness::Little)?;
+        let addr = ctx.args.code.next_imm(PisSize::B4, PisEndian::Little)?;
         return Ok(MemOpAddr(PisOp::constant(addr, ctx.addr_size)));
     }
 
@@ -178,7 +178,7 @@ fn decode_rm_memory_16(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
 
     if mod_val == 0b00 && rm == 0b110 {
         // special case for 16 bit displacement only
-        let addr = ctx.args.code.next_imm(PisSize::B2, PisEndianness::Little)?;
+        let addr = ctx.args.code.next_imm(PisSize::B2, PisEndian::Little)?;
         return Ok(MemOpAddr(PisOp::constant(addr, ctx.addr_size)));
     }
 

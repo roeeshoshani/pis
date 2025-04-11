@@ -173,9 +173,31 @@ pub enum ImmExtKind {
     Sign,
 }
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub enum PisEndianness {
+pub enum PisEndian {
     Little,
     Big,
+}
+impl PisEndian {
+    #[cfg(target_endian = "little")]
+    pub const NATIVE: Self = Self::Little;
+
+    #[cfg(target_endian = "big")]
+    pub const NATIVE: Self = Self::Big;
+
+    /// reverses the given byte array if this endian is not equal to the native endian.
+    /// this basically performs a conversion from this endian to the native endian and vice versa.
+    pub fn reverse_if_not_native(&self, bytes: &mut [u8]) {
+        if *self != Self::NATIVE {
+            bytes.reverse();
+        }
+    }
+
+    pub fn bytes_to_u64(&self, bytes: [u8; 8]) -> u64 {
+        match self {
+            PisEndian::Little => u64::from_le_bytes(bytes),
+            PisEndian::Big => u64::from_be_bytes(bytes),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]

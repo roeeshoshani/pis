@@ -12,7 +12,7 @@ use crate::{
     cursor::CursorImmExtParams,
     pis_insn,
     utils::array_vec,
-    LiftErr, MachineInsnLen, PisEndianness, PisInsn, PisOp, PisOpcode, PisSize,
+    LiftErr, MachineInsnLen, PisEndian, PisInsn, PisOp, PisOpcode, PisSize,
 };
 use arrayvec::ArrayVec;
 use bitpiece::*;
@@ -161,7 +161,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
                 encoded_size: imm.encoded_size.resolve(ctx),
                 extended_size,
                 ext_kind: imm.extend_kind,
-                endianness: PisEndianness::Little,
+                endian: PisEndian::Little,
             })?;
             Ok(LiftedOp::Value(imm))
         }
@@ -221,7 +221,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
                 encoded_size: size,
                 extended_size: ctx.addr_size,
                 ext_kind: crate::ImmExtKind::Sign,
-                endianness: PisEndianness::Little,
+                endian: PisEndian::Little,
             })?;
             let mask = calc_near_branch_ip_mask(ctx);
             Ok(LiftedOp::Value(
@@ -233,7 +233,7 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             let addr = ctx
                 .args
                 .code
-                .next_imm_op(ctx.addr_size, PisEndianness::Little)?;
+                .next_imm_op(ctx.addr_size, PisEndian::Little)?;
             let size = info.mem_operand_size.resolve(ctx);
             Ok(LiftedOp::Mem(MemOp { addr, size }))
         }

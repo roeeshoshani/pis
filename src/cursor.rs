@@ -1,6 +1,6 @@
 use thiserror_no_std::Error;
 
-use crate::{ImmExtKind, PisEndianness, PisOp, PisSize};
+use crate::{ImmExtKind, PisEndian, PisOp, PisSize};
 
 pub struct PisCursor<'a> {
     data: &'a [u8],
@@ -58,20 +58,16 @@ impl<'a> PisCursor<'a> {
     pub fn next_byte(&mut self) -> Result<u8, CursorErr> {
         Ok(self.next_bytes(1)?[0])
     }
-    pub fn next_imm(&mut self, size: PisSize, endianness: PisEndianness) -> Result<u64, CursorErr> {
+    pub fn next_imm(&mut self, size: PisSize, endian: PisEndian) -> Result<u64, CursorErr> {
         self.next_imm_ext(&CursorImmExtParams {
             encoded_size: size,
             extended_size: size,
             ext_kind: ImmExtKind::Zero,
-            endianness,
+            endian,
         })
     }
-    pub fn next_imm_op(
-        &mut self,
-        size: PisSize,
-        endianness: PisEndianness,
-    ) -> Result<PisOp, CursorErr> {
-        let value = self.next_imm(size, endianness)?;
+    pub fn next_imm_op(&mut self, size: PisSize, endian: PisEndian) -> Result<PisOp, CursorErr> {
+        let value = self.next_imm(size, endian)?;
         Ok(PisOp::constant(value, size))
     }
     pub fn next_imm_ext_op(&mut self, params: &CursorImmExtParams) -> Result<PisOp, CursorErr> {
@@ -90,9 +86,9 @@ impl<'a> PisCursor<'a> {
             }
             2 => {
                 let bytes = self.next_array::<2>()?;
-                let value = match params.endianness {
-                    PisEndianness::Little => u16::from_le_bytes(bytes),
-                    PisEndianness::Big => u16::from_be_bytes(bytes),
+                let value = match params.endian {
+                    PisEndian::Little => u16::from_le_bytes(bytes),
+                    PisEndian::Big => u16::from_be_bytes(bytes),
                 };
                 match params.ext_kind {
                     ImmExtKind::Zero => value as u64,
@@ -101,9 +97,9 @@ impl<'a> PisCursor<'a> {
             }
             4 => {
                 let bytes = self.next_array::<4>()?;
-                let value = match params.endianness {
-                    PisEndianness::Little => u32::from_le_bytes(bytes),
-                    PisEndianness::Big => u32::from_be_bytes(bytes),
+                let value = match params.endian {
+                    PisEndian::Little => u32::from_le_bytes(bytes),
+                    PisEndian::Big => u32::from_be_bytes(bytes),
                 };
                 match params.ext_kind {
                     ImmExtKind::Zero => value as u64,
@@ -112,9 +108,9 @@ impl<'a> PisCursor<'a> {
             }
             8 => {
                 let bytes = self.next_array::<8>()?;
-                let value = match params.endianness {
-                    PisEndianness::Little => u64::from_le_bytes(bytes),
-                    PisEndianness::Big => u64::from_be_bytes(bytes),
+                let value = match params.endian {
+                    PisEndian::Little => u64::from_le_bytes(bytes),
+                    PisEndian::Big => u64::from_be_bytes(bytes),
                 };
                 // no sign extension can be done here since it is already in the maximum supported size
                 value
@@ -129,7 +125,7 @@ pub struct CursorImmExtParams {
     pub encoded_size: PisSize,
     pub extended_size: PisSize,
     pub ext_kind: ImmExtKind,
-    pub endianness: PisEndianness,
+    pub endian: PisEndian,
 }
 
 #[derive(Debug, Error)]

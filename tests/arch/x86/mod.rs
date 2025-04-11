@@ -2,7 +2,8 @@ use std::num::Wrapping;
 
 use hex_literal::hex;
 use pis::{
-    LiftArgs, PisEmu, PisProcessor, PisProcessorX64, W64, X86_REG_RAX, X86_REG_RBX, X86_REG_RDI,
+    LiftArgs, PisEmu, PisEndian, PisProcessor, PisProcessorX64, PisSize, W64, X86_REG_RAX,
+    X86_REG_RBX, X86_REG_RDI,
 };
 
 const MAGICS: &[W64] = &[
@@ -39,18 +40,24 @@ fn run_code(emu: &mut PisEmu, code: &[u8], machine_code_addr: u64) {
     }
 }
 
+fn mk_emu() -> PisEmu {
+    // x86 is always little endian
+    PisEmu::new(PisEndian::Little)
+}
+
 #[test]
 fn lift_add() {
     // add rax, [rbx + rdi * 4 - 7]
     let code = hex!("48 03 44 bb f9");
 
-    let [rax, rbx, rdi] = choose_magics();
+    let [rax, rbx, rdi, mem_value] = choose_magics();
     let addr = rbx + rdi * Wrapping(4) - Wrapping(7);
 
-    let mut emu = PisEmu::new();
+    let mut emu = mk_emu();
     emu.write_op(X86_REG_RAX, rax).unwrap();
     emu.write_op(X86_REG_RBX, rbx).unwrap();
     emu.write_op(X86_REG_RDI, rdi).unwrap();
+    emu.write_mem(addr, PisSize::B8, mem_value).unwrap();
 
     run_code(&mut emu, &code, 0);
 

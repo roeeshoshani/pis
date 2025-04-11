@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use thiserror_no_std::Error;
 
-use crate::{PisInsn, PisOp, PisOpcode, PisSpace};
+use crate::{PisEndian, PisInsn, PisOp, PisOpcode, PisSize, PisSpace};
 
 type Result<T> = core::result::Result<T, PisEmuErr>;
 
@@ -11,10 +11,19 @@ pub type W64 = Wrapping<u64>;
 /// the max amount of op values
 const MAX_OP_VALS: usize = 64 * 1024;
 
+/// the max amount of mem values
+const MAX_MEM_VALS: usize = 64 * 1024;
+
 /// the value of an operand
 struct OpVal {
     op: PisOp,
     value: W64,
+}
+
+/// the value of a memory byte
+struct MemVal {
+    addr: W64,
+    value: u8,
 }
 
 /// a binary operator calculation.
@@ -23,12 +32,58 @@ type BinopCalc = fn(lhs: W64, rhs: W64) -> W64;
 /// an emulator of pis instructions.
 pub struct PisEmu {
     op_vals: LimitedVec<OpVal, MAX_OP_VALS>,
+    mem_vals: LimitedVec<MemVal, MAX_OP_VALS>,
+    endian: PisEndian,
 }
 impl PisEmu {
-    pub fn new() -> Self {
+    pub fn new(endian: PisEndian) -> Self {
         Self {
             op_vals: LimitedVec::new(),
+            mem_vals: LimitedVec::new(),
+            endian,
         }
+    }
+    fn read_mem_byte(&self, addr: W64) -> Result<u8> {
+        let mem_val = self
+            .mem_vals
+            .iter()
+            .find(|mem_val| mem_val.addr == addr)
+            .ok_or(PisEmuErr::ReadUninitMem(addr))?;
+        Ok(mem_val.value)
+    }
+    fn write_mem_byte(&mut self, addr: W64, value: u8) -> Result<()> {
+        self.mem_vals
+            .push(MemVal { addr, value })
+            .map_err(|_| PisEmuErr::TooManyMemVals)
+    }
+    pub fn read_mem(&self, addr: W64, read_size: PisSize) -> Result<W64> {
+        let size = read_size.bytes() as usize;
+
+        let mut bytes = [0u8; 8];
+        for i in 0..size {
+            bytes[i] = self.read_mem_byte(addr + Wrapping(i as u64))?;
+        }
+
+        // convert bytes back to native endian
+        self.endian.reverse_if_not_native(&mut bytes[..size]);
+
+        let value = u64::from_ne_bytes(bytes);
+
+        Ok(Wrapping(value))
+    }
+    pub fn write_mem(&mut self, addr: W64, read_size: PisSize, value: W64) -> Result<()> {
+        let size = read_size.bytes() as usize;
+
+        let mut bytes = value.0.to_ne_bytes();
+
+        // convert from native endian to the target endian
+        self.endian.reverse_if_not_native(&mut bytes[..size]);
+
+        for i in 0..size {
+            self.write_mem_byte(addr + Wrapping(i as u64), bytes[i])?;
+        }
+
+        Ok(())
     }
     pub fn read_var_op(&self, op: PisOp) -> Result<W64> {
         let op_val = self
@@ -71,7 +126,13 @@ impl PisEmu {
                 self.write_op(insn.operands[0], value)?;
                 Ok(())
             }
-            PisOpcode::Load => todo!(),
+            PisOpcode::Load => {
+                assert_eq!(insn.operands.len(), 2);
+                let addr = self.read_op(insn.operands[1])?;
+                let value = self.read_mem(addr, insn.operands[0].size)?;
+                self.write_op(insn.operands[0], value)?;
+                Ok(())
+            }
             PisOpcode::Store => todo!(),
             PisOpcode::Add => self.run_binop(insn, |a, b| a + b),
             PisOpcode::And => self.run_binop(insn, |a, b| a & b),
@@ -94,11 +155,17 @@ impl PisEmu {
 
 #[derive(Debug, Error)]
 pub enum PisEmuErr {
-    #[error("attempted to read an uninitialized operand: {0:?}")]
+    #[error("attempted to read an uninitialized operand {0:?}")]
     ReadUninitOp(PisOp),
+
+    #[error("attempted to read an uninitialized memory byte at address {0:x}")]
+    ReadUninitMem(W64),
 
     #[error("too many operand values")]
     TooManyOpVals,
+
+    #[error("too many memory values")]
+    TooManyMemVals,
 }
 
 pub struct LimitedVec<T, const MAX_SIZE: usize>(Vec<T>);
