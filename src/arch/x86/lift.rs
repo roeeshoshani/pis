@@ -503,7 +503,7 @@ pub fn lift_post_prefixes(mut ctx: CtxPostPrefixes) -> Result<LiftRes> {
     Ok(LiftRes {
         insns: final_ctx.res.insns,
         machine_insn_len: MachineInsnLen {
-            bytes: final_ctx.args.code.off() as u8,
+            bytes: final_ctx.args.code.off(),
         },
     })
 }

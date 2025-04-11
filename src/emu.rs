@@ -1,8 +1,12 @@
+use std::num::Wrapping;
+
 use thiserror_no_std::Error;
 
 use crate::{PisInsn, PisOp, PisOpcode};
 
 type Result<T> = core::result::Result<T, PisEmuErr>;
+
+pub type W64 = Wrapping<u64>;
 
 /// the max amount of op values
 const MAX_OP_VALS: usize = 64 * 1024;
@@ -10,11 +14,11 @@ const MAX_OP_VALS: usize = 64 * 1024;
 /// the value of an operand
 struct OpVal {
     op: PisOp,
-    value: u64,
+    value: W64,
 }
 
 /// a binary operator calculation.
-type BinopCalc = fn(lhs: u64, rhs: u64) -> u64;
+type BinopCalc = fn(lhs: W64, rhs: W64) -> W64;
 
 /// an emulator of pis instructions.
 pub struct PisEmu {
@@ -26,7 +30,7 @@ impl PisEmu {
             op_vals: LimitedVec::new(),
         }
     }
-    pub fn read_op(&self, op: PisOp) -> Result<u64> {
+    pub fn read_op(&self, op: PisOp) -> Result<W64> {
         let op_val = self
             .op_vals
             .iter()
@@ -34,7 +38,7 @@ impl PisEmu {
             .ok_or(PisEmuErr::ReadUninitOp(op))?;
         Ok(op_val.value)
     }
-    pub fn write_op(&mut self, op: PisOp, value: u64) -> Result<()> {
+    pub fn write_op(&mut self, op: PisOp, value: W64) -> Result<()> {
         self.op_vals
             .push(OpVal { op, value })
             .map_err(|_| PisEmuErr::TooManyOpVals)
@@ -70,8 +74,10 @@ impl PisEmu {
             PisOpcode::UnsignedCarry => todo!(),
             PisOpcode::SignedCarry => todo!(),
             PisOpcode::Parity => todo!(),
-            PisOpcode::Equals => self.run_binop(insn, |a, b| if a == b { 1 } else { 0 }),
-            PisOpcode::ShiftRightUnsigned => self.run_binop(insn, |a, b| a >> b),
+            PisOpcode::Equals => {
+                self.run_binop(insn, |a, b| if a == b { Wrapping(1) } else { Wrapping(0) })
+            }
+            PisOpcode::ShiftRightUnsigned => self.run_binop(insn, |a, b| Wrapping(a.0 >> b.0)),
             PisOpcode::Trunc => todo!(),
             PisOpcode::CondNeg => todo!(),
         }

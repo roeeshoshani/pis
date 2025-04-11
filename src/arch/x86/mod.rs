@@ -14,21 +14,37 @@ mod tables;
 
 define_reg_operands! {
     DefineRegOperandsSpec { start_offset: PisOff(0), step_size: 8, size: PisSize::B8 },
+    // offset 0x00
     X86_REG_RAX,
+    // offset 0x08
     X86_REG_RCX,
+    // offset 0x10
     X86_REG_RDX,
+    // offset 0x18
     X86_REG_RBX,
+    // offset 0x20
     X86_REG_RSP,
+    // offset 0x28
     X86_REG_RBP,
+    // offset 0x30
     X86_REG_RSI,
+    // offset 0x38
     X86_REG_RDI,
+    // offset 0x40
     X86_REG_R8,
+    // offset 0x48
     X86_REG_R9,
+    // offset 0x50
     X86_REG_R10,
+    // offset 0x58
     X86_REG_R11,
+    // offset 0x60
     X86_REG_R12,
+    // offset 0x68
     X86_REG_R13,
+    // offset 0x70
     X86_REG_R14,
+    // offset 0x78
     X86_REG_R15,
     // the RIP register is never emitted from the x86 lifter, but it is used internally during some intermediate representation
     // of instructions when lifting x86 instructions that use rip-relative addressing.

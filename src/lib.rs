@@ -199,7 +199,7 @@ macro_rules! pis_insn {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct MachineInsnLen {
-    pub bytes: u8,
+    pub bytes: usize,
 }
 
 pub type LiftResInsns = ArrayVec<PisInsn, { LiftRes::MAX_INSNS }>;
