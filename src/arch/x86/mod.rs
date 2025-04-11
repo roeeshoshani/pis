@@ -225,6 +225,9 @@ define_reg_operand!(
     PisSize::B1
 );
 
+/// the max amount of operands in an x86 instruction.
+const X86_INSN_MAX_OPS: usize = 3;
+
 #[derive(Debug, Error)]
 pub enum X86SpecificLiftErr {
     TwoLegacyPrefixesOfSameGroup { prefixes: [LegacyPrefix; 2] },

@@ -4,14 +4,17 @@ use super::{
     prefixes::LegacyPrefix,
     tables::{OpInfo, RegularInsnInfo, SpecificReg},
     tmp_op_allocator::TmpOpAllocator,
-    LiftRes, Result, X86Cpumode, X86_REG_FLAGS_CF, X86_REG_FLAGS_OF, X86_REG_FLAGS_PF,
-    X86_REG_FLAGS_SF, X86_REG_FLAGS_ZF, X86_REG_RAX, X86_REG_RIP,
+    LiftRes, Result, X86Cpumode, X86_INSN_MAX_OPS, X86_REG_FLAGS_CF, X86_REG_FLAGS_OF,
+    X86_REG_FLAGS_PF, X86_REG_FLAGS_SF, X86_REG_FLAGS_ZF, X86_REG_RAX, X86_REG_RIP,
 };
 use crate::{
     arch::x86::tables::{InsnInfo, Mnemonic, RegEncoding},
     cursor::CursorImmExtParams,
-    LiftErr, PisEndianness, PisOp, PisSize,
+    pis_insn,
+    utils::array_vec,
+    LiftErr, PisEndianness, PisInsn, PisOp, PisOpcode, PisSize,
 };
+use arrayvec::ArrayVec;
 use bitpiece::*;
 
 use super::{
@@ -30,12 +33,43 @@ pub struct MemOp {
     /// the size of the memory access for this memory operand.
     pub size: PisSize,
 }
+impl MemOp {
+    pub fn read(&self, ctx: &mut Ctx) -> Result<PisOp> {
+        let tmp = ctx.tmp_op_allocator.alloc(self.size)?;
+        ctx.emit(pis_insn!(Load! tmp, self.addr));
+        Ok(tmp)
+    }
+}
 
 pub enum LiftedOp {
     Value(PisOp),
     Reg(PisOp),
     Mem(MemOp),
     Implicit(PisSize),
+}
+impl LiftedOp {
+    pub fn read(&self, ctx: &mut Ctx) -> Result<PisOp> {
+        match self {
+            LiftedOp::Value(value) => Ok(*value),
+            LiftedOp::Reg(reg) => Ok(*reg),
+            LiftedOp::Mem(mem_op) => mem_op.read(ctx),
+            LiftedOp::Implicit(pis_size) => unreachable!(),
+        }
+    }
+    pub fn write(&self, value: PisOp, ctx: &mut Ctx) {
+        match self {
+            LiftedOp::Value(value) => unreachable!(),
+            LiftedOp::Reg(reg) => {
+                assert_eq!(value.size, reg.size);
+                ctx.emit(pis_insn!(Move! *reg, value));
+            }
+            LiftedOp::Mem(mem_op) => {
+                assert_eq!(value.size, mem_op.size);
+                ctx.emit(pis_insn!(Store! mem_op.addr, value));
+            }
+            LiftedOp::Implicit(pis_size) => unreachable!(),
+        }
+    }
 }
 
 pub fn apply_rex_bit_to_reg_encoding(reg_encoding: u8, rex_bit: bool) -> u8 {
@@ -219,14 +253,155 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
     }
 }
 
+/// calculates the parity flag value of the given calculation result.
+fn calc_pf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
+    let low_byte = ctx.op_trunc(calc_res, PisSize::B1)?;
+    ctx.op_parity(low_byte)
+}
+
+/// calculates the zero flag value of the given calculation result.
+fn calc_zf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
+    ctx.op_equals(calc_res, PisOp::constant(0, calc_res.size))
+}
+
+/// calculates the most significant bit of the given value.
+/// the output is a 1 byte conditional expression which indicates whether the sign bit of the given
+/// value is enabled.
+fn calc_msb(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
+    // shift it right such that the msb becomes the lsb
+    let shift_amount = value.size.bits() - 1;
+    let shifted =
+        ctx.op_shift_right_unsigned(value, PisOp::constant(shift_amount as u64, value.size))?;
+
+    // truncate it to 1 byte
+    ctx.op_trunc(shifted, PisSize::B1)
+}
+
+/// calculates the sign flag value of the given calculation result.
+fn calc_sf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
+    calc_msb(ctx, calc_res)
+}
+
+/// updates the parity, zero and sign flags according to the given calculation result.
+fn update_parity_zero_sign_flags(ctx: &mut Ctx, calc_res: PisOp) -> Result<()> {
+    let pf = calc_pf(ctx, calc_res)?;
+    ctx.op_move(X86_REG_FLAGS_PF, pf);
+
+    let zf = calc_zf(ctx, calc_res)?;
+    ctx.op_move(X86_REG_FLAGS_ZF, zf);
+
+    let sf = calc_sf(ctx, calc_res)?;
+    ctx.op_move(X86_REG_FLAGS_SF, sf);
+
+    Ok(())
+}
+
+/// a mnemonic calculation.
+/// this is the part of the mnemonic which only performs the calculation given the inputs (and updates the flags), but without
+/// decoding the inputs and storing the result.
+type MnmCalc = fn(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp>;
+
+/// the mnemonic calculation of the ADD opcode.
+fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    assert_eq!(lhs.size, rhs.size);
+
+    let res = ctx.op_add(lhs, rhs)?;
+
+    // carry flag
+    ctx.res
+        .insns
+        .push(pis_insn!(UnsignedCarry! X86_REG_FLAGS_CF, lhs, rhs));
+
+    // overflow flag
+    ctx.res
+        .insns
+        .push(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
+
+    // other flags
+    update_parity_zero_sign_flags(ctx, res)?;
+
+    Ok(res)
+}
+
+fn lift_binop(ctx: &mut Ctx, ops: &[LiftedOp], calc: MnmCalc, store_result: bool) -> Result<()> {
+    let lhs = ops[0].read(ctx)?;
+    let rhs = ops[1].read(ctx)?;
+
+    let res = calc(ctx, lhs, rhs)?;
+
+    if store_result {
+        ops[0].write(res, ctx);
+    }
+
+    Ok(())
+}
+
+fn lift_mnm_add(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    lift_binop(ctx, ops, mnm_calc_add, true)
+}
+
+fn lift_mnemonic(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
+    match mnemonic {
+        Mnemonic::Unsupported => Err(LiftErr::UnsupportedInsn),
+        Mnemonic::Add => lift_mnm_add(ctx, ops),
+        Mnemonic::Or => todo!(),
+        Mnemonic::Adc => todo!(),
+        Mnemonic::Sbb => todo!(),
+        Mnemonic::And => todo!(),
+        Mnemonic::Sub => todo!(),
+        Mnemonic::Xor => todo!(),
+        Mnemonic::Cmp => todo!(),
+        Mnemonic::Rol => todo!(),
+        Mnemonic::Ror => todo!(),
+        Mnemonic::Rcl => todo!(),
+        Mnemonic::Rcr => todo!(),
+        Mnemonic::Shl => todo!(),
+        Mnemonic::Shr => todo!(),
+        Mnemonic::Sar => todo!(),
+        Mnemonic::Inc => todo!(),
+        Mnemonic::Dec => todo!(),
+        Mnemonic::Push => todo!(),
+        Mnemonic::Pop => todo!(),
+        Mnemonic::Movsxd => todo!(),
+        Mnemonic::Imul => todo!(),
+        Mnemonic::Mul => todo!(),
+        Mnemonic::Jcc => todo!(),
+        Mnemonic::Test => todo!(),
+        Mnemonic::Xchg => todo!(),
+        Mnemonic::Mov => todo!(),
+        Mnemonic::Lea => todo!(),
+        Mnemonic::Nop => todo!(),
+        Mnemonic::Movsx => todo!(),
+        Mnemonic::Cwd => todo!(),
+        Mnemonic::Movs => todo!(),
+        Mnemonic::Cmps => todo!(),
+        Mnemonic::Stos => todo!(),
+        Mnemonic::Lods => todo!(),
+        Mnemonic::Ret => todo!(),
+        Mnemonic::Call => todo!(),
+        Mnemonic::Jmp => todo!(),
+        Mnemonic::Scas => todo!(),
+        Mnemonic::Hlt => todo!(),
+        Mnemonic::Cmc => todo!(),
+        Mnemonic::Not => todo!(),
+        Mnemonic::Neg => todo!(),
+        Mnemonic::Div => todo!(),
+        Mnemonic::Idiv => todo!(),
+        Mnemonic::Clc => todo!(),
+        Mnemonic::Stc => todo!(),
+        Mnemonic::Cli => todo!(),
+        Mnemonic::Sti => todo!(),
+        Mnemonic::Cld => todo!(),
+        Mnemonic::Std => todo!(),
+    }
+}
+
 fn lift_regular_insn_info(ctx: &mut Ctx, insn_info: &RegularInsnInfo) -> Result<()> {
-    if insn_info.mnemonic == Mnemonic::Unsupported {
-        return Err(LiftErr::UnsupportedInsn);
-    }
+    let mut lifted_ops: ArrayVec<LiftedOp, X86_INSN_MAX_OPS> = ArrayVec::new();
     for op in insn_info.ops {
-        lift_op(ctx, op)?;
+        lifted_ops.push(lift_op(ctx, op)?);
     }
-    todo!()
+    lift_mnemonic(ctx, insn_info.mnemonic, &lifted_ops)
 }
 
 fn lift_post_opcode_decode(ctx: &mut Ctx) -> Result<()> {

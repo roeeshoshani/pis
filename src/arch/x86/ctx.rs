@@ -1,6 +1,6 @@
 use bitpiece::BitPiece;
 
-use crate::{utils::array_vec, LiftArgs, PisInsn, PisOp, PisOpcode};
+use crate::{pis_insn, utils::array_vec, LiftArgs, PisInsn, PisOp, PisOpcode};
 
 use super::{
     lift::Modrm, prefixes::Prefixes, tables::OpcodeByteTable, tmp_op_allocator::TmpOpAllocator,
@@ -35,6 +35,9 @@ pub struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
+    pub fn emit(&mut self, insn: PisInsn) {
+        self.res.insns.push(insn);
+    }
     pub fn modrm(&mut self) -> Result<Modrm> {
         match self.modrm {
             Some(modrm) => Ok(modrm),
@@ -51,9 +54,9 @@ impl<'a> Ctx<'a> {
         assert_eq!(a.size, b.size);
         let tmp = self.tmp_op_allocator.alloc(a.size)?;
 
-        self.res.insns.push(PisInsn {
+        self.emit(PisInsn {
             opcode,
-            operands: array_vec![tmp.clone(), a, b],
+            operands: array_vec![tmp, a, b],
         });
 
         Ok(tmp)
@@ -65,9 +68,9 @@ impl<'a> Ctx<'a> {
     fn op_unop(&mut self, opcode: PisOpcode, x: PisOp) -> Result<PisOp> {
         let tmp = self.tmp_op_allocator.alloc(x.size)?;
 
-        self.res.insns.push(PisInsn {
+        self.emit(PisInsn {
             opcode,
-            operands: array_vec![tmp.clone(), x],
+            operands: array_vec![tmp, x],
         });
 
         Ok(tmp)
@@ -78,23 +81,50 @@ impl<'a> Ctx<'a> {
         self.op_unop(PisOpcode::CondNeg, x)
     }
 
+    /// performs parity calculation on the given operand into a tmp operand and returns it
+    pub fn op_parity(&mut self, x: PisOp) -> Result<PisOp> {
+        self.op_unop(PisOpcode::Parity, x)
+    }
+
+    pub fn op_move(&mut self, dst: PisOp, src: PisOp) {
+        self.emit(pis_insn!(Move! dst, src));
+    }
+
     /// zero extends the given operand into a tmp operand and returns it
     pub fn op_zext(&mut self, x: PisOp, new_size: PisSize) -> Result<PisOp> {
         assert!(new_size >= x.size);
 
         let tmp = self.tmp_op_allocator.alloc(new_size)?;
 
-        self.res.insns.push(PisInsn {
-            opcode: PisOpcode::Zext,
-            operands: array_vec![tmp.clone(), x],
-        });
+        self.emit(pis_insn!(Zext! tmp, x));
 
         Ok(tmp)
+    }
+
+    /// truncates the given operand into a tmp operand and returns it
+    pub fn op_trunc(&mut self, x: PisOp, new_size: PisSize) -> Result<PisOp> {
+        assert!(new_size <= x.size);
+
+        let tmp = self.tmp_op_allocator.alloc(new_size)?;
+
+        self.emit(pis_insn!(Trunc! tmp, x));
+
+        Ok(tmp)
+    }
+
+    /// calculates the equality of the given 2 operands into a new tmp operand and returns it.
+    pub fn op_equals(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::Equals, a, b)
     }
 
     /// adds the given 2 operands into a new tmp operand and returns it.
     pub fn op_add(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
         self.op_binop(PisOpcode::Add, a, b)
+    }
+
+    /// calculates `a >> b` into a new tmp operand and returns it. uses an unsigned shift.
+    pub fn op_shift_right_unsigned(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::ShiftRightUnsigned, a, b)
     }
 
     /// "bitwise-and"s the given 2 operands into a new tmp operand and returns it.

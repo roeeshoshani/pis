@@ -76,7 +76,7 @@ pub struct PisAddr {
     pub offset: PisOff,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct PisOp {
     pub space: PisSpace,
     pub offset: PisOff,
@@ -138,12 +138,23 @@ impl PisOp {
 #[non_exhaustive]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum PisOpcode {
+    Move,
+    Load,
+    Store,
     Add,
     And,
     MulUnsigned,
     Or,
     Xor,
     Zext,
+    UnsignedCarry,
+    SignedCarry,
+    Parity,
+    Equals,
+    ShiftRightUnsigned,
+
+    /// truncate an operand into a smaller size operand by only taking its lower bits>
+    Trunc,
 
     /// negate a conditional value.
     ///
@@ -170,6 +181,16 @@ pub struct PisInsn {
 }
 impl PisInsn {
     pub const MAX_OPERANDS: usize = 4;
+}
+
+#[macro_export]
+macro_rules! pis_insn {
+    ($opcode: ident! $($operand: expr),+) => {
+        crate::PisInsn {
+            opcode: crate::PisOpcode::$opcode,
+            operands: crate::utils::array_vec![$($operand),+],
+        }
+    };
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
