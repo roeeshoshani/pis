@@ -52,6 +52,7 @@ fn lift_add() {
 
     let [rax, rbx, rdi, mem_value] = choose_magics();
     let addr = rbx + rdi * Wrapping(4) - Wrapping(7);
+    let result = rax + mem_value;
 
     let mut emu = mk_emu();
     emu.write_op(X86_REG_RAX, rax).unwrap();
@@ -61,5 +62,5 @@ fn lift_add() {
 
     run_code(&mut emu, &code, 0);
 
-    todo!("check the value of rax");
+    assert_eq!(emu.read_op(X86_REG_RAX).unwrap(), result);
 }
