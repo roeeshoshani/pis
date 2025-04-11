@@ -117,7 +117,7 @@ impl<'a> PisCursor<'a> {
             }
             encoded_size => panic!("unsupported immediate size {}", encoded_size),
         };
-        Ok(extended_to_64_bits & params.extended_size.max_unsigned_val())
+        Ok(extended_to_64_bits & params.extended_size.mask())
     }
 }
 

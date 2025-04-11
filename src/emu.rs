@@ -140,14 +140,74 @@ impl PisEmu {
             PisOpcode::Or => self.run_binop(insn, |a, b| (a | b)),
             PisOpcode::Xor => self.run_binop(insn, |a, b| a ^ b),
             PisOpcode::Zext => todo!(),
-            PisOpcode::UnsignedCarry => todo!(),
-            PisOpcode::SignedCarry => todo!(),
-            PisOpcode::Parity => todo!(),
+            PisOpcode::UnsignedCarry => {
+                self.run_binop(insn, |a, b| {
+                    if a.0.checked_add(b.0).is_none() {
+                        // overflow, so we have a carry
+                        Wrapping(1)
+                    } else {
+                        // no overflow, so no carry
+                        Wrapping(0)
+                    }
+                })
+            }
+            PisOpcode::SignedCarry => {
+                self.run_binop(insn, |a, b| {
+                    let a_signed = a.0 as i64;
+                    let b_signed = b.0 as i64;
+                    if a_signed.checked_add(b_signed).is_none() {
+                        // overflow, so we have a carry
+                        Wrapping(1)
+                    } else {
+                        // no overflow, so no carry
+                        Wrapping(0)
+                    }
+                })
+            }
+            PisOpcode::Parity => {
+                assert_eq!(insn.operands.len(), 2);
+                assert_eq!(insn.operands[0].size, PisSize::B1);
+
+                // read the src operand
+                let value = self.read_op(insn.operands[1])?.0;
+                let bit_len = insn.operands[1].size.bits();
+
+                let mut active_bits_amount = 0;
+                for i in 0..bit_len {
+                    if (value & 1 << i) != 0 {
+                        active_bits_amount += 1;
+                    }
+                }
+
+                let parity = if active_bits_amount % 2 == 0 {
+                    Wrapping(1)
+                } else {
+                    Wrapping(0)
+                };
+
+                self.write_op(insn.operands[0], parity)?;
+
+                Ok(())
+            }
             PisOpcode::Equals => {
                 self.run_binop(insn, |a, b| if a == b { Wrapping(1) } else { Wrapping(0) })
             }
             PisOpcode::ShiftRightUnsigned => self.run_binop(insn, |a, b| Wrapping(a.0 >> b.0)),
-            PisOpcode::Trunc => todo!(),
+            PisOpcode::Trunc => {
+                assert_eq!(insn.operands.len(), 2);
+
+                // make sure that the size is actually decreasing and not increasing
+                assert!(insn.operands[0].size <= insn.operands[1].size);
+
+                let value = self.read_op(insn.operands[1])?;
+
+                // mask it to emulate the truncation
+                let masked_value = value & Wrapping(insn.operands[0].size.mask());
+
+                self.write_op(insn.operands[0], masked_value)?;
+
+                Ok(())
+            }
             PisOpcode::CondNeg => todo!(),
         }
     }
