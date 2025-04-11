@@ -73,6 +73,11 @@ impl<'a> Ctx<'a> {
         Ok(tmp)
     }
 
+    /// performs conditional negation on the given operand into a tmp operand and returns it
+    pub fn op_cond_neg(&mut self, x: PisOp) -> Result<PisOp> {
+        self.op_unop(PisOpcode::CondNeg, x)
+    }
+
     /// zero extends the given operand into a tmp operand and returns it
     pub fn op_zext(&mut self, x: PisOp, new_size: PisSize) -> Result<PisOp> {
         assert!(new_size >= x.size);
@@ -95,6 +100,16 @@ impl<'a> Ctx<'a> {
     /// "bitwise-and"s the given 2 operands into a new tmp operand and returns it.
     pub fn op_and(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
         self.op_binop(PisOpcode::And, a, b)
+    }
+
+    /// "bitwise-or"s the given 2 operands into a new tmp operand and returns it.
+    pub fn op_or(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::Or, a, b)
+    }
+
+    /// "bitwise-xor"s the given 2 operands into a new tmp operand and returns it.
+    pub fn op_xor(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::Xor, a, b)
     }
 
     /// performs an optional add operation on the given 2 operands.

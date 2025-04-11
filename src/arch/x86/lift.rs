@@ -4,7 +4,8 @@ use super::{
     prefixes::LegacyPrefix,
     tables::{OpInfo, RegularInsnInfo, SpecificReg},
     tmp_op_allocator::TmpOpAllocator,
-    LiftRes, Result, X86Cpumode, X86_REG_RIP,
+    LiftRes, Result, X86Cpumode, X86_REG_FLAGS_CF, X86_REG_FLAGS_OF, X86_REG_FLAGS_PF,
+    X86_REG_FLAGS_SF, X86_REG_FLAGS_ZF, X86_REG_RAX, X86_REG_RIP,
 };
 use crate::{
     arch::x86::tables::{InsnInfo, Mnemonic, RegEncoding},
@@ -76,6 +77,43 @@ fn calc_near_branch_ip_mask(ctx: &Ctx) -> u64 {
         X86Cpumode::B64 => {
             // in 64-bit mode, the ip value is always limited to 64-bits, regardless of prefixes
             return u64::MAX;
+        }
+    }
+}
+
+#[bitpiece(4)]
+#[derive(Debug, Clone, Copy)]
+struct Cond {
+    is_negative: bool,
+    kind: CondKind,
+}
+
+#[bitpiece(3)]
+#[derive(Debug, Clone, Copy)]
+enum CondKind {
+    Overflow,
+    Below,
+    Equals,
+    BelowEqual,
+    Sign,
+    Parity,
+    Lower,
+    LowerEqual,
+}
+impl CondKind {
+    fn lift(&self, ctx: &mut Ctx) -> Result<PisOp> {
+        match self {
+            CondKind::Overflow => Ok(X86_REG_FLAGS_OF),
+            CondKind::Below => Ok(X86_REG_FLAGS_CF),
+            CondKind::Equals => Ok(X86_REG_FLAGS_ZF),
+            CondKind::BelowEqual => ctx.op_or(X86_REG_FLAGS_ZF, X86_REG_FLAGS_CF),
+            CondKind::Sign => Ok(X86_REG_FLAGS_SF),
+            CondKind::Parity => Ok(X86_REG_FLAGS_PF),
+            CondKind::Lower => ctx.op_xor(X86_REG_FLAGS_SF, X86_REG_FLAGS_OF),
+            CondKind::LowerEqual => {
+                let lower = ctx.op_xor(X86_REG_FLAGS_SF, X86_REG_FLAGS_OF)?;
+                ctx.op_or(lower, X86_REG_FLAGS_ZF)
+            }
         }
     }
 }
@@ -170,7 +208,14 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             let size = size_info.resolve(ctx);
             Ok(LiftedOp::Implicit(size))
         }
-        OpInfo::Cond => todo!(),
+        OpInfo::Cond => {
+            let cond = Cond::from_bits(ctx.opcode_byte & 0b1111);
+            let mut result = cond.kind().lift(ctx)?;
+            if cond.is_negative() {
+                result = ctx.op_cond_neg(result)?;
+            }
+            Ok(LiftedOp::Value(result))
+        }
     }
 }
 

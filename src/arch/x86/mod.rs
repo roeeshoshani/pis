@@ -1,3 +1,5 @@
+use std::fs::Permissions;
+
 use crate::{regs::DefineRegOperandsSpec, *};
 use ctx::{CtxInitial, CtxPostPrefixes};
 use lift::lift_post_prefixes;
@@ -133,6 +135,95 @@ define_reg_operands! {
 }
 
 const SEG_REGS_END_OFFSET: PisOff = X86_REG_GS_BASE.end_offset();
+const FLAGS_REG_OFFSET: PisOff = SEG_REGS_END_OFFSET;
+
+define_reg_operand!(X86_REG_RFLAGS, FLAGS_REG_OFFSET, PisSize::B8);
+define_reg_operand!(X86_REG_EFLAGS, FLAGS_REG_OFFSET, PisSize::B4);
+define_reg_operand!(
+    X86_REG_FLAGS_CF,
+    PisOff(FLAGS_REG_OFFSET.0 + 0),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_PF,
+    PisOff(FLAGS_REG_OFFSET.0 + 2),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_AF,
+    PisOff(FLAGS_REG_OFFSET.0 + 4),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_ZF,
+    PisOff(FLAGS_REG_OFFSET.0 + 6),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_SF,
+    PisOff(FLAGS_REG_OFFSET.0 + 7),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_TF,
+    PisOff(FLAGS_REG_OFFSET.0 + 8),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_IF,
+    PisOff(FLAGS_REG_OFFSET.0 + 9),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_DF,
+    PisOff(FLAGS_REG_OFFSET.0 + 10),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_OF,
+    PisOff(FLAGS_REG_OFFSET.0 + 11),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_IOPL,
+    PisOff(FLAGS_REG_OFFSET.0 + 12),
+    PisSize::B2
+);
+define_reg_operand!(
+    X86_REG_FLAGS_NT,
+    PisOff(FLAGS_REG_OFFSET.0 + 14),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_RF,
+    PisOff(FLAGS_REG_OFFSET.0 + 16),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_VM,
+    PisOff(FLAGS_REG_OFFSET.0 + 17),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_AC,
+    PisOff(FLAGS_REG_OFFSET.0 + 18),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_VIF,
+    PisOff(FLAGS_REG_OFFSET.0 + 19),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_VIP,
+    PisOff(FLAGS_REG_OFFSET.0 + 20),
+    PisSize::B1
+);
+define_reg_operand!(
+    X86_REG_FLAGS_ID,
+    PisOff(FLAGS_REG_OFFSET.0 + 21),
+    PisSize::B1
+);
 
 #[derive(Debug, Error)]
 pub enum X86SpecificLiftErr {

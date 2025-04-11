@@ -144,6 +144,12 @@ pub enum PisOpcode {
     Or,
     Xor,
     Zext,
+
+    /// negate a conditional value.
+    ///
+    /// if the value is non-zero, make it zero.
+    /// if the value is zero, make it 1.
+    CondNeg,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
