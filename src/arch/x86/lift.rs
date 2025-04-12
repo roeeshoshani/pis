@@ -1110,12 +1110,14 @@ fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
 }
 
 /// mnemonic calculation for MUL.
-fn mnm_calc_mul(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
-    do_mul_ax(ctx, factor)
+fn lift_mul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    assert_eq!(ops.len(), 1);
+    let value = ops[0].read(ctx)?;
+    do_mul_ax(ctx, value)
 }
 
 /// mnemonic calculation for IMUL variants.
-fn mnm_calc_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+fn lift_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     match ops.len() {
         1 => {
             // IMUL r/m (AX = AL * r/m8, DX:AX = AX * r/m16, RDX:RAX = RAX * r/m32/64)
@@ -1158,6 +1160,7 @@ fn mnm_calc_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 
             // write result
             ops[0].write(res, ctx);
+
             // PZS flags are undefined for IMUL r, r/m
 
             Ok(())
@@ -1268,17 +1271,21 @@ fn do_div_ax_dx(ctx: &mut Ctx, divisor: PisOp, is_signed: bool) -> Result<()> {
 }
 
 /// mnemonic calculation for DIV.
-fn mnm_calc_div(ctx: &mut Ctx, divisor: PisOp) -> Result<()> {
-    do_div_ax_dx(ctx, divisor, false)
+fn lift_div(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    assert_eq!(ops.len(), 1);
+    let value = ops[0].read(ctx)?;
+    do_div_ax_dx(ctx, value, false)
 }
 
 /// mnemonic calculation for IDIV.
-fn mnm_calc_idiv(ctx: &mut Ctx, divisor: PisOp) -> Result<()> {
-    do_div_ax_dx(ctx, divisor, true)
+fn lift_idiv(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    assert_eq!(ops.len(), 1);
+    let value = ops[0].read(ctx)?;
+    do_div_ax_dx(ctx, value, true)
 }
 
 /// mnemonic calculation for XCHG.
-fn mnm_calc_xchg(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+fn lift_xchg(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
     assert_eq!(ops[0].size(), ops[1].size());
 
@@ -1733,48 +1740,48 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Sub => lift_binop(ctx, ops, mnm_calc_sub, true),
         Mnemonic::Xor => lift_binop(ctx, ops, mnm_calc_xor, true),
         Mnemonic::Cmp => lift_binop(ctx, ops, mnm_calc_sub, false),
-        Mnemonic::Rol => todo!(),
-        Mnemonic::Ror => todo!(),
-        Mnemonic::Rcl => todo!(),
-        Mnemonic::Rcr => todo!(),
-        Mnemonic::Shl => todo!(),
-        Mnemonic::Shr => todo!(),
-        Mnemonic::Sar => todo!(),
+        Mnemonic::Rol => lift_binop(ctx, ops, mnm_calc_rol, true),
+        Mnemonic::Ror => lift_binop(ctx, ops, mnm_calc_ror, true),
+        Mnemonic::Rcl => lift_binop(ctx, ops, mnm_calc_rcl, true),
+        Mnemonic::Rcr => lift_binop(ctx, ops, mnm_calc_rcr, true),
+        Mnemonic::Shl => lift_binop(ctx, ops, mnm_calc_shl, true),
+        Mnemonic::Shr => lift_binop(ctx, ops, mnm_calc_shr, true),
+        Mnemonic::Sar => lift_binop(ctx, ops, mnm_calc_sar, true),
         Mnemonic::Inc => lift_unop(ctx, ops, mnm_calc_inc),
         Mnemonic::Dec => lift_unop(ctx, ops, mnm_calc_dec),
         Mnemonic::Push => lift_push(ctx, ops),
         Mnemonic::Pop => lift_pop(ctx, ops),
-        Mnemonic::Movsxd => todo!(),
-        Mnemonic::Imul => todo!(),
-        Mnemonic::Mul => todo!(),
-        Mnemonic::Jcc => todo!(),
+        Mnemonic::Movsxd => lift_movsxd(ctx, ops),
+        Mnemonic::Imul => lift_imul(ctx, ops),
+        Mnemonic::Mul => lift_mul(ctx, ops),
+        Mnemonic::Jcc => lift_jcc(ctx, ops),
         Mnemonic::Test => lift_binop(ctx, ops, mnm_calc_and, false),
-        Mnemonic::Xchg => todo!(),
+        Mnemonic::Xchg => lift_xchg(ctx, ops),
         Mnemonic::Mov => lift_mov(ctx, ops),
         Mnemonic::Lea => lift_lea(ctx, ops),
         Mnemonic::Nop => Ok(()),
-        Mnemonic::Movsx => todo!(),
-        Mnemonic::Cwd => todo!(),
-        Mnemonic::Movs => todo!(),
-        Mnemonic::Cmps => todo!(),
-        Mnemonic::Stos => todo!(),
-        Mnemonic::Lods => todo!(),
-        Mnemonic::Ret => todo!(),
-        Mnemonic::Call => todo!(),
-        Mnemonic::Jmp => todo!(),
-        Mnemonic::Scas => todo!(),
-        Mnemonic::Hlt => todo!(),
-        Mnemonic::Cmc => todo!(),
+        Mnemonic::Movsx => lift_movsx(ctx, ops),
+        Mnemonic::Cwd => lift_cwd(ctx, ops),
+        Mnemonic::Movs => lift_movs(ctx, ops),
+        Mnemonic::Cmps => lift_cmps(ctx, ops),
+        Mnemonic::Stos => lift_stos(ctx, ops),
+        Mnemonic::Lods => lift_lods(ctx, ops),
+        Mnemonic::Ret => lift_ret(ctx, ops),
+        Mnemonic::Call => lift_call(ctx, ops),
+        Mnemonic::Jmp => lift_jmp(ctx, ops),
+        Mnemonic::Scas => lift_scas(ctx, ops),
+        Mnemonic::Hlt => lift_hlt(ctx, ops),
+        Mnemonic::Cmc => lift_cmc(ctx, ops),
         Mnemonic::Not => lift_unop(ctx, ops, mnm_calc_not),
         Mnemonic::Neg => lift_unop(ctx, ops, mnm_calc_neg),
-        Mnemonic::Div => todo!(),
-        Mnemonic::Idiv => todo!(),
-        Mnemonic::Clc => todo!(),
-        Mnemonic::Stc => todo!(),
-        Mnemonic::Cli => todo!(),
-        Mnemonic::Sti => todo!(),
-        Mnemonic::Cld => todo!(),
-        Mnemonic::Std => todo!(),
+        Mnemonic::Div => lift_div(ctx, ops),
+        Mnemonic::Idiv => lift_idiv(ctx, ops),
+        Mnemonic::Clc => lift_clc(ctx, ops),
+        Mnemonic::Stc => lift_stc(ctx, ops),
+        Mnemonic::Cli => lift_cli(ctx, ops),
+        Mnemonic::Sti => lift_sti(ctx, ops),
+        Mnemonic::Cld => lift_cld(ctx, ops),
+        Mnemonic::Std => lift_std(ctx, ops),
     }
 }
 
