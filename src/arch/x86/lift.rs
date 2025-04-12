@@ -296,44 +296,47 @@ fn update_parity_zero_sign_flags(ctx: &mut Ctx, calc_res: PisOp) -> Result<()> {
     Ok(())
 }
 
-/// a mnemonic calculation.
-/// this is the part of the mnemonic which only performs the calculation given the inputs (and updates the flags), but without
-/// decoding the inputs and storing the result.
-type MnmCalc = fn(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp>;
-
 /// the mnemonic calculation of the ADD opcode.
 fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_add(lhs, rhs)?;
 
-    // carry flag
     ctx.emit(pis_insn!(UnsignedCarry! X86_REG_FLAGS_CF, lhs, rhs));
-
-    // overflow flag
     ctx.emit(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
-
-    // other flags
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
+}
+
+/// set the carry flag and overflow flag to zero.
+fn set_cf_of_to_zero(ctx: &mut Ctx) {
+    ctx.op_move_zero(X86_REG_FLAGS_CF);
+    ctx.op_move_zero(X86_REG_FLAGS_OF);
 }
 
 /// the mnemonic calculation of the OR opcode.
 fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_or(lhs, rhs)?;
 
-    // carry flag
-    ctx.op_move(X86_REG_FLAGS_CF, PisOp::constant(0, PisSize::B1));
-
-    // overflow flag
-    ctx.op_move(X86_REG_FLAGS_OF, PisOp::constant(0, PisSize::B1));
-
-    // other flags
+    set_cf_of_to_zero(ctx);
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
 }
 
-fn lift_binop(ctx: &mut Ctx, ops: &[LiftedOp], calc: MnmCalc, store_result: bool) -> Result<()> {
+/// the mnemonic calculation of the AND opcode.
+fn mnm_calc_and(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    let res = ctx.op_and(lhs, rhs)?;
+
+    set_cf_of_to_zero(ctx);
+    update_parity_zero_sign_flags(ctx, res)?;
+
+    Ok(res)
+}
+
+fn lift_binop<F>(ctx: &mut Ctx, ops: &[LiftedOp], calc: F, store_result: bool) -> Result<()>
+where
+    F: FnOnce(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+{
     let lhs = ops[0].read(ctx)?;
     let rhs = ops[1].read(ctx)?;
 
@@ -355,7 +358,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Or => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Adc => todo!(),
         Mnemonic::Sbb => todo!(),
-        Mnemonic::And => todo!(),
+        Mnemonic::And => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Sub => todo!(),
         Mnemonic::Xor => todo!(),
         Mnemonic::Cmp => todo!(),

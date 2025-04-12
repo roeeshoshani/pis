@@ -86,8 +86,14 @@ impl<'a> Ctx<'a> {
         self.op_unop(PisOpcode::Parity, x)
     }
 
+    /// moves the src operand into the dst operand
     pub fn op_move(&mut self, dst: PisOp, src: PisOp) {
         self.emit(pis_insn!(Move! dst, src));
+    }
+
+    /// moves a value of zero into the given operand
+    pub fn op_move_zero(&mut self, dst: PisOp) {
+        self.op_move(dst, PisOp::constant(0, dst.size));
     }
 
     /// zero extends the given operand into a tmp operand and returns it
