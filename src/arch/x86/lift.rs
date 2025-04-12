@@ -308,13 +308,13 @@ where
 }
 
 /// calculates the parity flag value of the given calculation result.
-fn calc_pf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
+fn calc_p_f(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
     let low_byte = ctx.emitter.op_trunc(calc_res, PisSize::B1)?;
     Ok(ctx.emitter.op_unop(PisOpcode::Parity, low_byte)?)
 }
 
 /// calculates the zero flag value of the given calculation result.
-fn calc_zf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
+fn calc_z_f(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
     Ok(ctx.emitter.op_binop(
         PisOpcode::Equals,
         calc_res,
@@ -338,19 +338,19 @@ fn calc_msb(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
 }
 
 /// calculates the sign flag value of the given calculation result.
-fn calc_sf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
+fn calc_s_f(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
     calc_msb(ctx, calc_res)
 }
 
 /// updates the parity, zero and sign flags according to the given calculation result.
 fn update_parity_zero_sign_flags(ctx: &mut Ctx, calc_res: PisOp) -> Result<()> {
-    let pf = calc_pf(ctx, calc_res)?;
+    let pf = calc_p_f(ctx, calc_res)?;
     ctx.emitter.op_move(X86_REG_FLAGS_PF, pf);
 
-    let zf = calc_zf(ctx, calc_res)?;
+    let zf = calc_z_f(ctx, calc_res)?;
     ctx.emitter.op_move(X86_REG_FLAGS_ZF, zf);
 
-    let sf = calc_sf(ctx, calc_res)?;
+    let sf = calc_s_f(ctx, calc_res)?;
     ctx.emitter.op_move(X86_REG_FLAGS_SF, sf);
 
     Ok(())
@@ -727,12 +727,11 @@ fn ternary(ctx: &mut Ctx, cond: PisOp, then_val: PisOp, else_val: PisOp) -> Resu
 
     let operand_size = then_val.size;
 
-    // zero extend the condition
-    let cond_zero_extended = ctx.emitter.op_zext(cond, operand_size)?;
+    let cond_zext = ctx.emitter.op_zext(cond, operand_size)?;
 
     // arithmetically negate the condition to convert it to a bit mask.
     // if cond is 1, negating it produces all 1s mask. If 0, it produces all 0s mask.
-    let cond_mask = ctx.emitter.op_unop(PisOpcode::Neg, cond_zero_extended)?;
+    let cond_mask = ctx.emitter.op_unop(PisOpcode::Neg, cond_zext)?;
 
     // calculate the negative condition mask
     let not_cond_mask = ctx.emitter.op_unop(PisOpcode::Not, cond_mask)?;
@@ -752,6 +751,7 @@ fn update_shift_parity_zero_sign_flags(
     shift_result: PisOp,
 ) -> Result<()> {
     assert_eq!(count.size, shift_result.size);
+
     let operand_size = shift_result.size;
 
     // only modify the flags if the count is non-zero
@@ -759,17 +759,17 @@ fn update_shift_parity_zero_sign_flags(
         ctx.emitter
             .op_binop(PisOpcode::Equals, count, PisOp::constant(0, operand_size))?;
 
-    let new_pf = calc_pf(ctx, shift_result)?;
-    let final_pf = ternary(ctx, is_count_0, X86_REG_FLAGS_PF, new_pf)?;
-    ctx.emitter.op_move(X86_REG_FLAGS_PF, final_pf);
+    let new_p_f = calc_p_f(ctx, shift_result)?;
+    let final_p_f = ternary(ctx, is_count_0, X86_REG_FLAGS_PF, new_p_f)?;
+    ctx.emitter.op_move(X86_REG_FLAGS_PF, final_p_f);
 
-    let new_zf = calc_zf(ctx, shift_result)?;
-    let final_zf = ternary(ctx, is_count_0, X86_REG_FLAGS_ZF, new_zf)?;
-    ctx.emitter.op_move(X86_REG_FLAGS_ZF, final_zf);
+    let new_z_f = calc_z_f(ctx, shift_result)?;
+    let final_z_f = ternary(ctx, is_count_0, X86_REG_FLAGS_ZF, new_z_f)?;
+    ctx.emitter.op_move(X86_REG_FLAGS_ZF, final_z_f);
 
-    let new_sf = calc_sf(ctx, shift_result)?;
-    let final_sf = ternary(ctx, is_count_0, X86_REG_FLAGS_SF, new_sf)?;
-    ctx.emitter.op_move(X86_REG_FLAGS_SF, final_sf);
+    let new_s_f = calc_s_f(ctx, shift_result)?;
+    let final_s_f = ternary(ctx, is_count_0, X86_REG_FLAGS_SF, new_s_f)?;
+    ctx.emitter.op_move(X86_REG_FLAGS_SF, final_s_f);
 
     Ok(())
 }
@@ -820,18 +820,18 @@ fn mnm_calc_shl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     let count = mask_shift_count(ctx, rhs, operand_size)?;
 
-    // carry Flag
+    // carry flag
     let cf_val = calc_c_f_shl(ctx, lhs, count)?;
     ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val);
 
     // perform the shift
     let res = ctx.emitter.op_binop(PisOpcode::ShiftLeft, lhs, count)?;
 
-    // overflow Flag
+    // overflow flag
     let of_val = calc_o_f_shl(ctx, lhs, count, res)?;
     ctx.emitter.op_move(X86_REG_FLAGS_OF, of_val);
 
-    // parity, Zero, Sign Flags
+    // parity, zero, sign flags
     update_shift_parity_zero_sign_flags(ctx, count, res)?;
 
     Ok(res)
@@ -911,11 +911,11 @@ fn mnm_calc_sar(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     let count = mask_shift_count(ctx, rhs, operand_size)?;
 
-    // carry Flag (same as SHR)
+    // carry flag (same as SHR)
     let cf_val = calc_c_f_shr(ctx, lhs, count)?;
     ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val);
 
-    // overflow Flag
+    // overflow flag
     let of_val = calc_o_f_sar(ctx, count, operand_size)?;
     ctx.emitter.op_move(X86_REG_FLAGS_OF, of_val);
 
@@ -924,7 +924,7 @@ fn mnm_calc_sar(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
         .emitter
         .op_binop(PisOpcode::ShiftRightSigned, lhs, count)?; // assuming ShiftRightSigned exists
 
-    // parity, Zero, Sign Flags
+    // parity, zero, sign flags
     update_shift_parity_zero_sign_flags(ctx, count, res)?;
 
     Ok(res)
@@ -948,15 +948,15 @@ fn mnm_calc_rol(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
         .emitter
         .op_binop(PisOpcode::Or, left_shifted, right_shifted)?;
 
-    // carry Flag = LSB of result
+    // carry flag = LSB of result
     let cf_val = calc_lsb(ctx, res)?;
     ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val);
 
-    // overflow Flag (same as SHL)
+    // overflow flag (same as SHL)
     let of_val = calc_o_f_shl(ctx, lhs, count, res)?;
     ctx.emitter.op_move(X86_REG_FLAGS_OF, of_val);
 
-    // ROL doesn't update PZS flags based on the result like shifts
+    // ROL doesn't update parity zero and sign flags based on the result like shifts.
     // we only update CF and OF based on the specific ROL logic.
 
     Ok(res)
@@ -982,11 +982,11 @@ fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
         .emitter
         .op_binop(PisOpcode::Or, right_shifted, left_shifted)?;
 
-    // carry Flag = MSB of result
+    // carry flag = MSB of result
     let cf_val = calc_msb(ctx, res)?;
     ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val);
 
-    // overflow Flag = MSB(result) ^ MSB-1(result)
+    // overflow flag = MSB(result) ^ MSB-1(result)
     let msb_minus_1_shift = PisOp::constant(1, operand_size);
     let msb_minus_1_val =
         ctx.emitter
@@ -1001,48 +1001,8 @@ fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let final_of = ternary(ctx, is_count_1, new_of, X86_REG_FLAGS_OF)?;
     ctx.emitter.op_move(X86_REG_FLAGS_OF, final_of);
 
-    // ROR doesn't update PZS flags based on the result like shifts
-
-    Ok(res)
-}
-
-/// mnemonic calculation for RCL.
-fn mnm_calc_rcl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    let operand_size = lhs.size;
-    // mask count modulo (operand_bits + 1)
-    let count_mask_val = operand_size.bits() as u64;
-    let count_mask_op = PisOp::constant(count_mask_val, operand_size);
-    let count = ctx.emitter.op_binop(PisOpcode::And, rhs, count_mask_op)?;
-
-    // simulate rotation through carry
-    // this is complex to emulate directly with basic PIS ops.
-    // A loop or more specialized PIS ops would be needed for an accurate RCL.
-    // placeholder: treat as ROL for now, flags will be incorrect.
-    let res = mnm_calc_rol(ctx, lhs, rhs)?;
-
-    // TODO: Implement proper RCL logic including flags.
-    // CF = bit shifted out from MSB
-    // OF = MSB(result) ^ CF (only if masked count == 1)
-
-    Ok(res)
-}
-
-/// mnemonic calculation for RCR.
-fn mnm_calc_rcr(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    let operand_size = lhs.size;
-    // mask count modulo (operand_bits + 1)
-    let count_mask_val = operand_size.bits() as u64;
-    let count_mask_op = PisOp::constant(count_mask_val, operand_size);
-    let count = ctx.emitter.op_binop(PisOpcode::And, rhs, count_mask_op)?;
-
-    // simulate rotation through carry
-    // this is complex to emulate directly with basic PIS ops.
-    // placeholder: treat as ROR for now, flags will be incorrect.
-    let res = mnm_calc_ror(ctx, lhs, rhs)?;
-
-    // TODO: Implement proper RCR logic including flags.
-    // CF = bit shifted out from LSB
-    // OF = MSB(original) ^ MSB(result) (only if masked count == 1)
+    // ROR doesn't update parity zero and sign flags based on the result like shifts.
+    // we only update CF and OF based on the specific ROL logic.
 
     Ok(res)
 }
@@ -1742,8 +1702,8 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Cmp => lift_binop(ctx, ops, mnm_calc_sub, false),
         Mnemonic::Rol => lift_binop(ctx, ops, mnm_calc_rol, true),
         Mnemonic::Ror => lift_binop(ctx, ops, mnm_calc_ror, true),
-        Mnemonic::Rcl => lift_binop(ctx, ops, mnm_calc_rcl, true),
-        Mnemonic::Rcr => lift_binop(ctx, ops, mnm_calc_rcr, true),
+        Mnemonic::Rcl => todo!(),
+        Mnemonic::Rcr => todo!(),
         Mnemonic::Shl => lift_binop(ctx, ops, mnm_calc_shl, true),
         Mnemonic::Shr => lift_binop(ctx, ops, mnm_calc_shr, true),
         Mnemonic::Sar => lift_binop(ctx, ops, mnm_calc_sar, true),
