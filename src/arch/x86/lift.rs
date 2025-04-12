@@ -822,10 +822,10 @@ fn mnm_calc_shl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 
     // Carry Flag
     let cf_val = calc_c_f_shl(ctx, lhs, count)?;
-    ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val); // Update CF before calculating OF
+    ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val);
 
     // Perform the shift
-    let res = ctx.emitter.op_binop(PisOpcode::ShiftLeft, lhs, count)?; // Assuming ShiftLeft opcode exists
+    let res = ctx.emitter.op_binop(PisOpcode::ShiftLeft, lhs, count)?;
 
     // Overflow Flag
     let of_val = calc_o_f_shl(ctx, lhs, count, res)?;
@@ -847,7 +847,7 @@ fn calc_c_f_shr(ctx: &mut Ctx, to_shift: PisOp, count: PisOp) -> Result<PisOp> {
     let shifted = ctx
         .emitter
         .op_binop(PisOpcode::ShiftRightUnsigned, to_shift, count_minus_1)?;
-    let last_extracted_bit = calc_lsb(ctx, shifted)?; // Use helper for LSB
+    let last_extracted_bit = calc_lsb(ctx, shifted)?;
 
     // Only update CF if count != 0
     let is_count_0 =
@@ -936,7 +936,7 @@ fn mnm_calc_rol(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let count = mask_shift_count(ctx, rhs, operand_size)?;
 
     // Perform the rotation (left shift + right shift + or)
-    let left_shifted = ctx.emitter.op_binop(PisOpcode::ShiftLeft, lhs, count)?; // Assuming ShiftLeft exists
+    let left_shifted = ctx.emitter.op_binop(PisOpcode::ShiftLeft, lhs, count)?;
 
     let size_bits_op = PisOp::constant(operand_size.bits() as u64, operand_size);
     let right_shift_count = ctx.emitter.op_binop(PisOpcode::Sub, size_bits_op, count)?;
@@ -950,7 +950,7 @@ fn mnm_calc_rol(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 
     // Carry Flag = LSB of result
     let cf_val = calc_lsb(ctx, res)?;
-    ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val); // Update CF before calculating OF
+    ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val);
 
     // Overflow Flag (same as SHL)
     let of_val = calc_o_f_shl(ctx, lhs, count, res)?;
@@ -984,7 +984,7 @@ fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 
     // Carry Flag = MSB of result
     let cf_val = calc_msb(ctx, res)?;
-    ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val); // Update CF before calculating OF
+    ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_val);
 
     // Overflow Flag = MSB(result) ^ MSB-1(result)
     let msb_minus_1_shift = PisOp::constant(1, operand_size);
@@ -1010,41 +1010,41 @@ fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 fn mnm_calc_rcl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     // Mask count modulo (operand_bits + 1)
-    let count_mask_val = operand_size.bits() as u64; // Not +1 here, as mask is size-1
-    let count_mask_op = PisOp::constant(count_mask_val, operand_size); // Mask for bits 0 to size-1
-    let count = ctx.emitter.op_binop(PisOpcode::And, rhs, count_mask_op)?; // TODO: Need modulo, not AND
+    let count_mask_val = operand_size.bits() as u64;
+    let count_mask_op = PisOp::constant(count_mask_val, operand_size);
+    let count = ctx.emitter.op_binop(PisOpcode::And, rhs, count_mask_op)?;
 
     // Simulate rotation through carry
     // This is complex to emulate directly with basic PIS ops.
     // A loop or more specialized PIS ops would be needed for an accurate RCL.
     // Placeholder: treat as ROL for now, flags will be incorrect.
-    let res = mnm_calc_rol(ctx, lhs, rhs)?; // Incorrect flags
+    let res = mnm_calc_rol(ctx, lhs, rhs)?;
 
     // TODO: Implement proper RCL logic including flags.
     // CF = bit shifted out from MSB
     // OF = MSB(result) ^ CF (only if masked count == 1)
 
-    Ok(res) // Return potentially incorrect result
+    Ok(res)
 }
 
 /// mnemonic calculation for RCR.
 fn mnm_calc_rcr(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     // Mask count modulo (operand_bits + 1)
-    let count_mask_val = operand_size.bits() as u64; // Not +1 here, as mask is size-1
-    let count_mask_op = PisOp::constant(count_mask_val, operand_size); // Mask for bits 0 to size-1
-    let count = ctx.emitter.op_binop(PisOpcode::And, rhs, count_mask_op)?; // TODO: Need modulo, not AND
+    let count_mask_val = operand_size.bits() as u64;
+    let count_mask_op = PisOp::constant(count_mask_val, operand_size);
+    let count = ctx.emitter.op_binop(PisOpcode::And, rhs, count_mask_op)?;
 
     // Simulate rotation through carry
     // This is complex to emulate directly with basic PIS ops.
     // Placeholder: treat as ROR for now, flags will be incorrect.
-    let res = mnm_calc_ror(ctx, lhs, rhs)?; // Incorrect flags
+    let res = mnm_calc_ror(ctx, lhs, rhs)?;
 
     // TODO: Implement proper RCR logic including flags.
     // CF = bit shifted out from LSB
     // OF = MSB(original) ^ MSB(result) (only if masked count == 1)
 
-    Ok(res) // Return potentially incorrect result
+    Ok(res)
 }
 
 /// performs a multiplication operation that operates on the `ax` operand and stores its
@@ -1063,8 +1063,8 @@ fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
         // PIS_EMIT(&ctx->args->result, PIS_INSN4(PIS_OPCODE_UNSIGNED_MUL_16, result_high_tmp, result_low_tmp, ax, factor));
         // For now, let's assume we only get the low 64 bits correctly with standard MUL
         result_low = ctx.emitter.op_binop(PisOpcode::MulUnsigned, ax, factor)?;
-        result_high = PisOp::constant(0, operand_size); // Placeholder - high part lost/undefined
-                                                        // TODO: Implement 64x64->128 multiplication if needed, or add PIS_OPCODE_UNSIGNED_MUL_16
+        result_high = PisOp::constant(0, operand_size);
+        // TODO: Implement 64x64->128 multiplication if needed, or add PIS_OPCODE_UNSIGNED_MUL_16
     } else {
         let double_operand_size = match operand_size {
             PisSize::B1 => PisSize::B2,
@@ -1101,10 +1101,10 @@ fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
         result_high,
         PisOp::constant(0, operand_size),
     )?;
-    let not_high_zero = ctx.emitter.op_unop(PisOpcode::CondNeg, is_high_zero)?; // CF = !is_high_zero
+    let not_high_zero = ctx.emitter.op_unop(PisOpcode::CondNeg, is_high_zero)?;
 
     ctx.emitter.op_move(X86_REG_FLAGS_CF, not_high_zero);
-    ctx.emitter.op_move(X86_REG_FLAGS_OF, not_high_zero); // OF = CF for MUL
+    ctx.emitter.op_move(X86_REG_FLAGS_OF, not_high_zero);
 
     Ok(())
 }
@@ -1126,26 +1126,26 @@ fn mnm_calc_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 
             // Perform signed multiplication - requires PIS support or emulation
             // Placeholder: Use unsigned mul and assume PIS handles signs or specific opcodes exist
-            let result_low = ctx.emitter.op_binop(PisOpcode::MulSigned, ax, factor)?; // Assuming MulSigned exists
-            let result_high = PisOp::constant(0, operand_size); // Placeholder: High part lost/undefined
+            let result_low = ctx.emitter.op_binop(PisOpcode::MulSigned, ax, factor)?;
+            let result_high = PisOp::constant(0, operand_size);
 
             // TODO: Implement signed multiplication with correct high part calculation (e.g., using PIS_OPCODE_SIGNED_MUL_16)
             // TODO: Calculate CF/OF based on whether high part matches sign extension of low part
 
             ctx.emitter.op_move(ax, result_low);
-            ctx.emitter.op_move(dx, result_high); // Potentially incorrect high part
-                                                  // TODO: Update CF/OF correctly for IMUL r/m
+            ctx.emitter.op_move(dx, result_high);
+            // TODO: Update CF/OF correctly for IMUL r/m
 
             Ok(())
         }
         2 => {
             // IMUL r, r/m
-            let lhs = ops[0].read(ctx)?; // Destination register
-            let rhs = ops[1].read(ctx)?; // Source r/m
+            let lhs = ops[0].read(ctx)?;
+            let rhs = ops[1].read(ctx)?;
             let operand_size = lhs.size;
 
             // Perform signed multiplication
-            let res = ctx.emitter.op_binop(PisOpcode::MulSigned, lhs, rhs)?; // Assuming MulSigned exists
+            let res = ctx.emitter.op_binop(PisOpcode::MulSigned, lhs, rhs)?;
 
             // TODO: Calculate CF/OF based on whether the result fits in the destination size without overflow
             // This requires checking if `res` sign-extended from operand_size to 2*operand_size equals `res` zero-extended.
@@ -1164,13 +1164,13 @@ fn mnm_calc_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
         }
         3 => {
             // IMUL r, r/m, imm
-            let _dst = &ops[0]; // Destination register (written to at the end)
-            let lhs = ops[1].read(ctx)?; // Source r/m
-            let rhs = ops[2].read(ctx)?; // Source immediate
+            let _dst = &ops[0];
+            let lhs = ops[1].read(ctx)?;
+            let rhs = ops[2].read(ctx)?;
             let operand_size = lhs.size;
 
             // Perform signed multiplication
-            let res = ctx.emitter.op_binop(PisOpcode::MulSigned, lhs, rhs)?; // Assuming MulSigned exists
+            let res = ctx.emitter.op_binop(PisOpcode::MulSigned, lhs, rhs)?;
 
             // TODO: Calculate CF/OF (same logic as IMUL r, r/m)
             let cf_of_val = ctx
@@ -1246,9 +1246,9 @@ fn do_div_ax_dx(ctx: &mut Ctx, divisor: PisOp, is_signed: bool) -> Result<()> {
 
         // Extend divisor
         let divisor_ext = if is_signed {
-            ctx.emitter.op_sext(divisor, double_operand_size)? // Sign extend for IDIV
+            ctx.emitter.op_sext(divisor, double_operand_size)?
         } else {
-            ctx.emitter.op_zext(divisor, double_operand_size)? // Zero extend for DIV
+            ctx.emitter.op_zext(divisor, double_operand_size)?
         };
 
         // Perform division and remainder
@@ -1288,10 +1288,10 @@ fn mnm_calc_xchg(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     // Use a temporary variable (tmp operand) if one operand is memory
     // Otherwise, direct moves suffice if both are registers.
     // The C code uses a tmp regardless, which is safer.
-    let tmp = ctx.emitter.copy_value(op0_val)?; // Copy op0 to tmp
+    let tmp = ctx.emitter.copy_value(op0_val)?;
 
-    ops[0].write(op1_val, ctx); // Write op1 to op0
-    ops[1].write(tmp, ctx); // Write tmp (original op0) to op1
+    ops[0].write(op1_val, ctx);
+    ops[1].write(tmp, ctx);
 
     Ok(())
 }
@@ -1302,7 +1302,7 @@ fn lift_movsxd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     // MOVSD behaves like MOVSXD only in 64-bit mode.
     // In 32-bit mode, 0x63 is ARPL.
     if ctx.cpumode != X86Cpumode::B64 {
-        return Err(LiftErr::UnsupportedInsn); // Or specific error for ARPL if needed
+        return Err(LiftErr::UnsupportedInsn);
     }
 
     let dst_size = ops[0].size();
@@ -1312,7 +1312,7 @@ fn lift_movsxd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     if dst_size > src_size {
         // Perform sign extension
         let src_val = ops[1].read(ctx)?;
-        let sext_val = ctx.emitter.op_sext(src_val, dst_size)?; // Assuming op_sext exists
+        let sext_val = ctx.emitter.op_sext(src_val, dst_size)?;
         ops[0].write(sext_val, ctx);
     } else if dst_size == src_size {
         // If sizes are equal, it acts like a MOV
@@ -1334,7 +1334,7 @@ fn lift_movsx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     );
 
     let src_val = ops[1].read(ctx)?;
-    let sext_val = ctx.emitter.op_sext(src_val, dst_size)?; // Assuming op_sext exists
+    let sext_val = ctx.emitter.op_sext(src_val, dst_size)?;
     ops[0].write(sext_val, ctx);
     Ok(())
 }
@@ -1357,9 +1357,9 @@ fn lift_movzx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 
 /// lift CWD/CDQ/CQO.
 fn lift_cwd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
-    assert_eq!(ops.len(), 2); // Implicit ops: DX, AX (or EDX, EAX or RDX, RAX)
-    let dst_op = &ops[0]; // DX/EDX/RDX
-    let src_op = &ops[1]; // AX/EAX/RAX
+    assert_eq!(ops.len(), 2);
+    let dst_op = &ops[0];
+    let src_op = &ops[1];
 
     let src_val = src_op.read(ctx)?;
     let dst_size = dst_op.size();
@@ -1375,7 +1375,7 @@ fn lift_cwd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 /// push IP onto the stack.
 fn push_ip(ctx: &mut Ctx) -> Result<()> {
     // RIP value points *after* the current instruction.
-    let cur_insn_end_addr = ctx.args.cur_code_addr(); // Get address *after* the instruction bytes are consumed
+    let cur_insn_end_addr = ctx.args.cur_code_addr();
     let ip_mask = calc_near_branch_ip_mask(ctx);
     let push_value_raw = cur_insn_end_addr & ip_mask;
 
@@ -1397,16 +1397,16 @@ fn lift_call(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
             .prefixes
             .has_legacy_prefix(LegacyPrefix::AddressSizeOverride)
     {
-        return Err(LiftErr::UnsupportedInsn); // Or specific error
+        return Err(LiftErr::UnsupportedInsn);
     }
 
-    let target = ops[0].read(ctx)?; // Target can be rel offset resolved to RIP or r/m
+    let target = ops[0].read(ctx)?;
 
     // Push return address (IP after the CALL instruction)
     push_ip(ctx)?;
 
     // Jump to target
-    ctx.emit(pis_insn!(JmpCall! target)); // Assuming JmpCall opcode exists
+    ctx.emit(pis_insn!(JmpCall! target));
 
     Ok(())
 }
@@ -1422,11 +1422,11 @@ fn lift_jmp(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
             .prefixes
             .has_legacy_prefix(LegacyPrefix::AddressSizeOverride)
     {
-        return Err(LiftErr::UnsupportedInsn); // Or specific error
+        return Err(LiftErr::UnsupportedInsn);
     }
 
     let target = ops[0].read(ctx)?;
-    ctx.emit(pis_insn!(Jmp! target)); // Assuming Jmp opcode exists
+    ctx.emit(pis_insn!(Jmp! target));
 
     Ok(())
 }
@@ -1434,34 +1434,24 @@ fn lift_jmp(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 /// lift JCC.
 fn lift_jcc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
-    // Ensure no size override prefixes for branches
-    if ctx
-        .prefixes
-        .has_legacy_prefix(LegacyPrefix::OperandSizeOverride)
-        || ctx
-            .prefixes
-            .has_legacy_prefix(LegacyPrefix::AddressSizeOverride)
-    {
-        return Err(LiftErr::UnsupportedInsn); // Or specific error
-    }
 
-    let cond = ops[0].read(ctx)?; // Condition (result of Cond operand lifting)
-    let target = ops[1].read(ctx)?; // Target address
+    let cond = ops[0].read(ctx)?;
+    let target = ops[1].read(ctx)?;
 
-    ctx.emit(pis_insn!(JmpCond! target, cond)); // Assuming JmpCond opcode exists
+    ctx.emit(pis_insn!(JmpCond! target, cond));
 
     Ok(())
 }
 
 /// lift RET.
 fn lift_ret(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
-    assert!(ops.is_empty()); // Basic RET has no explicit operands
+    assert!(ops.is_empty());
 
     // Pop return address from stack
     let ret_addr = pop(ctx, ctx.stack_addr_size)?;
 
     // Jump to return address
-    ctx.emit(pis_insn!(JmpRet! ret_addr)); // Assuming JmpRet opcode exists
+    ctx.emit(pis_insn!(JmpRet! ret_addr));
 
     Ok(())
 }
@@ -1594,7 +1584,7 @@ fn lift_cmps(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 
     let operand_size = ops[0].size();
 
-    let rep_ctx = rep_begin(ctx)?; // REPZ/REPNZ are meaningful here
+    let rep_ctx = rep_begin(ctx)?;
 
     let si = PisOp::reg(X86_REG_RSI.offset.0, ctx.addr_size);
     let di = PisOp::reg(X86_REG_RDI.offset.0, ctx.addr_size);
@@ -1608,7 +1598,7 @@ fn lift_cmps(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     ctx.emitter.emit(pis_insn!(Load! val_di, di));
 
     // Compare (updates flags like SUB)
-    mnm_calc_sub(ctx, val_si, val_di)?; // Use SUB logic for flags
+    mnm_calc_sub(ctx, val_si, val_di)?;
 
     // Update SI and DI based on DF flag (assuming DF=0 for now, increment)
     // TODO: Implement DF flag check
@@ -1625,7 +1615,7 @@ fn lift_lods(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
 
     let operand_size = ops[0].size();
-    let rep_ctx = rep_begin(ctx)?; // REP doesn't make sense for LODS but check anyway
+    let rep_ctx = rep_begin(ctx)?;
 
     let ax = PisOp::reg(X86_REG_RAX.offset.0, operand_size);
     let si = PisOp::reg(X86_REG_RSI.offset.0, ctx.addr_size);
@@ -1648,7 +1638,7 @@ fn lift_scas(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
     let operand_size = ops[0].size();
 
-    let rep_ctx = rep_begin(ctx)?; // REPZ/REPNZ are meaningful here
+    let rep_ctx = rep_begin(ctx)?;
 
     let ax = PisOp::reg(X86_REG_RAX.offset.0, operand_size);
     let di = PisOp::reg(X86_REG_RDI.offset.0, ctx.addr_size);
@@ -1659,7 +1649,7 @@ fn lift_scas(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     ctx.emitter.emit(pis_insn!(Load! val_di, di));
 
     // Compare AL/AX/EAX/RAX with [DI] (updates flags like SUB)
-    mnm_calc_sub(ctx, ax, val_di)?; // Use SUB logic for flags
+    mnm_calc_sub(ctx, ax, val_di)?;
 
     // Update DI based on DF flag (assuming DF=0 for now, increment)
     // TODO: Implement DF flag check
@@ -1672,7 +1662,7 @@ fn lift_scas(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 /// lift HLT.
 fn lift_hlt(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
-    ctx.emit(pis_insn!(Halt!)); // Assuming Halt opcode exists
+    ctx.emit(pis_insn!(Halt!));
     Ok(())
 }
 
