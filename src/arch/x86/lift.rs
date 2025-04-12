@@ -613,13 +613,27 @@ fn mnm_calc_adc(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     )
 }
 
+/// the mnemonic calculation of the SBB mnemonic.
+fn mnm_calc_sbb(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    mnm_calc_binop_with_carry(
+        ctx,
+        lhs,
+        rhs,
+        BinopWithCarryMnmInfo {
+            opcode: PisOpcode::Sub,
+            calc_c_f: calc_c_f_sub,
+            calc_o_f: calc_o_f_sub,
+        },
+    )
+}
+
 fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
     match mnemonic {
         Mnemonic::Unsupported => Err(LiftErr::UnsupportedInsn),
         Mnemonic::Add => lift_binop(ctx, ops, mnm_calc_add, true),
         Mnemonic::Or => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Adc => lift_binop(ctx, ops, mnm_calc_adc, true),
-        Mnemonic::Sbb => todo!(),
+        Mnemonic::Sbb => lift_binop(ctx, ops, mnm_calc_sbb, true),
         Mnemonic::And => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Sub => lift_binop(ctx, ops, mnm_calc_sub, true),
         Mnemonic::Xor => lift_binop(ctx, ops, mnm_calc_xor, true),
