@@ -157,6 +157,7 @@ pub enum PisOpcode {
     And,
     MulUnsigned,
     MulSigned,
+    Mul16Unsigned,
     MulOverflowSigned,
     DivUnsigned,
     DivSigned,

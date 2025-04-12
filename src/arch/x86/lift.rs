@@ -1011,27 +1011,23 @@ fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 /// result in the `ax` and `dx` operands.
 fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
     let operand_size = factor.size;
+
     let ax = PisOp::reg(X86_REG_RAX.offset.0, operand_size);
     let dx = PisOp::reg(X86_REG_RDX.offset.0, operand_size);
 
-    let result_high: PisOp;
-    let result_low: PisOp;
+    // compute the result of the multiplication and split it into 2 parts - high and low.
+    let (result_high, result_low) = if operand_size == PisSize::B8 {
+        // when the operand size is 8 we can't use the regular multiplication opcode, since we want
+        // a 16-byte result. so, we use a special opcode for it.
+        let result_high = ctx.emitter.tmp_op_allocator.alloc(operand_size)?;
+        let result_low = ctx.emitter.tmp_op_allocator.alloc(operand_size)?;
 
-    if operand_size == PisSize::B8 {
-        // use a special PIS opcode for 128-bit result if available, otherwise emulate
-        // assuming PIS_OPCODE_UNSIGNED_MUL_16 exists:
-        // PIS_EMIT(&ctx->args->result, PIS_INSN4(PIS_OPCODE_UNSIGNED_MUL_16, result_high_tmp, result_low_tmp, ax, factor));
-        // for now, let's assume we only get the low 64 bits correctly with standard MUL
-        result_low = ctx.emitter.op_binop(PisOpcode::MulUnsigned, ax, factor)?;
-        result_high = PisOp::constant(0, operand_size);
-        // TODO: Implement 64x64->128 multiplication if needed, or add PIS_OPCODE_UNSIGNED_MUL_16
+        ctx.emitter
+            .emit(pis_insn!(Mul16Unsigned! result_high, result_low, X86_REG_RAX, factor));
+
+        (result_high, result_low)
     } else {
-        let double_operand_size = match operand_size {
-            PisSize::B1 => PisSize::B2,
-            PisSize::B2 => PisSize::B4,
-            PisSize::B4 => PisSize::B8,
-            _ => unreachable!(),
-        };
+        let double_operand_size = operand_size.double();
 
         let factor_zext = ctx.emitter.op_zext(factor, double_operand_size)?;
         let ax_zext = ctx.emitter.op_zext(ax, double_operand_size)?;
@@ -1041,21 +1037,23 @@ fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
             .op_binop(PisOpcode::MulUnsigned, ax_zext, factor_zext)?;
 
         // extract low part
-        result_low = ctx.emitter.op_trunc(mul_result, operand_size)?;
+        let result_low = ctx.emitter.op_trunc(mul_result, operand_size)?;
 
         // extract high part
         let shift_amount = PisOp::constant(operand_size.bits() as u64, double_operand_size);
         let shifted_result =
             ctx.emitter
                 .op_binop(PisOpcode::ShiftRightUnsigned, mul_result, shift_amount)?;
-        result_high = ctx.emitter.op_trunc(shifted_result, operand_size)?;
-    }
+        let result_high = ctx.emitter.op_trunc(shifted_result, operand_size)?;
+
+        (result_high, result_low)
+    };
 
     // store results
     ctx.emitter.op_move(ax, result_low);
     ctx.emitter.op_move(dx, result_high);
 
-    // calculate Carry and Overflow flags
+    // calculate carry and overflow flags
     let is_high_zero = ctx.emitter.op_binop(
         PisOpcode::Equals,
         result_high,
@@ -1069,86 +1067,40 @@ fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
     Ok(())
 }
 
-/// mnemonic calculation for MUL.
+/// mnemonic calculation for MUL
 fn lift_mul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
     let value = ops[0].read(ctx)?;
     do_mul_ax(ctx, value)
 }
 
-/// mnemonic calculation for IMUL variants.
+fn mnm_calc_imul(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    let res = ctx.emitter.op_binop(PisOpcode::MulSigned, lhs, rhs)?;
+
+    let overflow = ctx
+        .emitter
+        .op_binop(PisOpcode::MulOverflowSigned, lhs, rhs)?;
+    ctx.emitter.op_move(X86_REG_FLAGS_CF, overflow);
+    ctx.emitter.op_move(X86_REG_FLAGS_OF, overflow);
+
+    Ok(res)
+}
+
+/// lift IMUL
 fn lift_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     match ops.len() {
         1 => {
-            // IMUL r/m (AX = AL * r/m8, DX:AX = AX * r/m16, RDX:RAX = RAX * r/m32/64)
-            let factor = ops[0].read(ctx)?;
-            let operand_size = factor.size;
-            let ax = PisOp::reg(X86_REG_RAX.offset.0, operand_size);
-            let dx = PisOp::reg(X86_REG_RDX.offset.0, operand_size);
-
-            // perform signed multiplication - requires PIS support or emulation
-            // placeholder: Use unsigned mul and assume PIS handles signs or specific opcodes exist
-            let result_low = ctx.emitter.op_binop(PisOpcode::MulSigned, ax, factor)?;
-            let result_high = PisOp::constant(0, operand_size);
-
-            // TODO: Implement signed multiplication with correct high part calculation (e.g., using PIS_OPCODE_SIGNED_MUL_16)
-            // TODO: Calculate CF/OF based on whether high part matches sign extension of low part
-
-            ctx.emitter.op_move(ax, result_low);
-            ctx.emitter.op_move(dx, result_high);
-            // TODO: Update CF/OF correctly for IMUL r/m
-
-            Ok(())
+            todo!()
         }
-        2 => {
-            // IMUL r, r/m
-            let lhs = ops[0].read(ctx)?;
-            let rhs = ops[1].read(ctx)?;
-            let operand_size = lhs.size;
-
-            // perform signed multiplication
-            let res = ctx.emitter.op_binop(PisOpcode::MulSigned, lhs, rhs)?;
-
-            // TODO: Calculate CF/OF based on whether the result fits in the destination size without overflow
-            // this requires checking if `res` sign-extended from operand_size to 2*operand_size equals `res` zero-extended.
-            // or use a dedicated PIS opcode like SIGNED_MUL_OVERFLOW.
-            let cf_of_val = ctx
-                .emitter
-                .op_binop(PisOpcode::MulOverflowSigned, lhs, rhs)?;
-            ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_of_val);
-            ctx.emitter.op_move(X86_REG_FLAGS_OF, cf_of_val);
-
-            // write result
-            ops[0].write(res, ctx);
-
-            // PZS flags are undefined for IMUL r, r/m
-
-            Ok(())
-        }
+        2 => lift_binop(ctx, ops, mnm_calc_imul, true),
         3 => {
-            // IMUL r, r/m, imm
-            let _dst = &ops[0];
             let lhs = ops[1].read(ctx)?;
             let rhs = ops[2].read(ctx)?;
-            let operand_size = lhs.size;
-
-            // perform signed multiplication
-            let res = ctx.emitter.op_binop(PisOpcode::MulSigned, lhs, rhs)?;
-
-            // TODO: Calculate CF/OF (same logic as IMUL r, r/m)
-            let cf_of_val = ctx
-                .emitter
-                .op_binop(PisOpcode::MulOverflowSigned, lhs, rhs)?; // assuming SignedMulOverflow exists
-            ctx.emitter.op_move(X86_REG_FLAGS_CF, cf_of_val);
-            ctx.emitter.op_move(X86_REG_FLAGS_OF, cf_of_val);
-
-            // write result
+            let res = mnm_calc_imul(ctx, lhs, rhs)?;
             ops[0].write(res, ctx);
-            // PZS flags are undefined for IMUL r, r/m, imm
-
             Ok(())
         }
-        _ => unreachable!("Invalid number of operands for IMUL"),
+        len => unreachable!("invalid number of operands for imul ({})", len),
     }
 }
 

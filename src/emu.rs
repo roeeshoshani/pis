@@ -247,6 +247,7 @@ impl PisEmu {
             PisOpcode::Div16Signed => todo!(),
             PisOpcode::Rem16Unsigned => todo!(),
             PisOpcode::Rem16Signed => todo!(),
+            PisOpcode::Mul16Unsigned => todo!(),
         }
     }
 }
