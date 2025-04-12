@@ -296,15 +296,30 @@ fn update_parity_zero_sign_flags(ctx: &mut Ctx, calc_res: PisOp) -> Result<()> {
     Ok(())
 }
 
+/// updates the value of the carry flag according to a addtraction operation `a - b`.
+fn update_c_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
+    ctx.emit(pis_insn!(UnsignedCarry! X86_REG_FLAGS_CF, lhs, rhs));
+}
+
+/// updates the value of the overflow flag according to a addition operation `a + b`.
+fn update_o_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
+    ctx.emit(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
+}
+
 /// the mnemonic calculation of the ADD opcode.
 fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_add(lhs, rhs)?;
 
-    ctx.emit(pis_insn!(UnsignedCarry! X86_REG_FLAGS_CF, lhs, rhs));
-    ctx.emit(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
+    update_c_f_add(ctx, lhs, rhs);
+    update_o_f_add(ctx, lhs, rhs);
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
+}
+
+/// updates the value of the carry flag according to a subtraction operation `a - b`.
+fn update_c_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
+    ctx.emit(pis_insn!(LessThanUnsigned! X86_REG_FLAGS_CF, lhs, rhs));
 }
 
 /// calculates the value of the overflow flag for a subtraction operation `a - b`.
@@ -336,11 +351,6 @@ fn update_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, sub_res: PisOp) -> Resu
     Ok(())
 }
 
-/// updates the value of the carry flag according to a subtraction operation `a - b`.
-fn update_c_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
-    ctx.emit(pis_insn!(LessThanUnsigned! X86_REG_FLAGS_CF, lhs, rhs));
-}
-
 /// the mnemonic calculation of the SUB opcode.
 fn mnm_calc_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_sub(lhs, rhs)?;
@@ -360,6 +370,19 @@ fn mnm_calc_dec(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
 
     // NOTE: the carry flag is not updated when using DEC
     update_o_f_sub(ctx, value, one, res)?;
+    update_parity_zero_sign_flags(ctx, res)?;
+
+    Ok(res)
+}
+
+/// the mnemonic calculation of the INC opcode.
+fn mnm_calc_inc(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
+    let one = PisOp::constant(1, value.size);
+
+    let res = ctx.op_add(value, one)?;
+
+    // NOTE: the carry flag is not updated when using INC
+    update_o_f_add(ctx, value, one);
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
@@ -456,7 +479,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Shl => todo!(),
         Mnemonic::Shr => todo!(),
         Mnemonic::Sar => todo!(),
-        Mnemonic::Inc => todo!(),
+        Mnemonic::Inc => lift_unop(ctx, ops, mnm_calc_inc),
         Mnemonic::Dec => lift_unop(ctx, ops, mnm_calc_dec),
         Mnemonic::Push => todo!(),
         Mnemonic::Pop => todo!(),
