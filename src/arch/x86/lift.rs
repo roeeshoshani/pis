@@ -468,13 +468,26 @@ where
     Ok(())
 }
 
-/// lift a MOV opcode
 fn lift_mov(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
     assert_eq!(ops[0].size(), ops[1].size());
 
     let value = ops[1].read(ctx)?;
     ops[0].write(value, ctx);
+
+    Ok(())
+}
+
+fn lift_lea(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    assert_eq!(ops.len(), 2);
+
+    let LiftedOp::Mem(mem_op) = &ops[1] else {
+        panic!("lea instruction with a non-memory src operand");
+    };
+
+    assert_eq!(ops[0].size(), mem_op.addr.size);
+
+    ops[0].write(mem_op.addr, ctx);
 
     Ok(())
 }
@@ -508,7 +521,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Test => lift_binop(ctx, ops, mnm_calc_and, false),
         Mnemonic::Xchg => todo!(),
         Mnemonic::Mov => lift_mov(ctx, ops),
-        Mnemonic::Lea => todo!(),
+        Mnemonic::Lea => lift_lea(ctx, ops),
         Mnemonic::Nop => todo!(),
         Mnemonic::Movsx => todo!(),
         Mnemonic::Cwd => todo!(),
