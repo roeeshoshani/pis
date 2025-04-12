@@ -5,8 +5,8 @@ use super::{
     tables::{OpInfo, RegularInsnInfo, SpecificReg},
     tmp_op_allocator::TmpOpAllocator,
     LiftRes, Result, X86Cpumode, X86_INSN_MAX_OPS, X86_REG_FLAGS_CF, X86_REG_FLAGS_OF,
-    X86_REG_FLAGS_PF, X86_REG_FLAGS_SF, X86_REG_FLAGS_ZF, X86_REG_RAX, X86_REG_RDX, X86_REG_RIP,
-    X86_REG_RSP,
+    X86_REG_FLAGS_PF, X86_REG_FLAGS_SF, X86_REG_FLAGS_ZF, X86_REG_RAX, X86_REG_RCX, X86_REG_RDX,
+    X86_REG_RIP, X86_REG_RSP,
 };
 use crate::{
     arch::x86::tables::{InsnInfo, Mnemonic, RegEncoding},
@@ -1011,8 +1011,8 @@ fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 /// result in the `ax` and `dx` operands.
 fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
     let operand_size = factor.size;
-    let ax = ctx.decode_reg(SpecificReg::Rax.reg_encoding(), operand_size);
-    let dx = ctx.decode_reg(SpecificReg::Rdx.reg_encoding(), operand_size);
+    let ax = PisOp::reg(X86_REG_RAX.offset.0, operand_size);
+    let dx = PisOp::reg(X86_REG_RDX.offset.0, operand_size);
 
     let result_high: PisOp;
     let result_low: PisOp;
@@ -1083,8 +1083,8 @@ fn lift_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
             // IMUL r/m (AX = AL * r/m8, DX:AX = AX * r/m16, RDX:RAX = RAX * r/m32/64)
             let factor = ops[0].read(ctx)?;
             let operand_size = factor.size;
-            let ax = ctx.decode_reg(SpecificReg::Rax.reg_encoding(), operand_size);
-            let dx = ctx.decode_reg(SpecificReg::Rdx.reg_encoding(), operand_size);
+            let ax = PisOp::reg(X86_REG_RAX.offset.0, operand_size);
+            let dx = PisOp::reg(X86_REG_RDX.offset.0, operand_size);
 
             // perform signed multiplication - requires PIS support or emulation
             // placeholder: Use unsigned mul and assume PIS handles signs or specific opcodes exist
@@ -1155,8 +1155,8 @@ fn lift_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 /// performs division (DIV or IDIV).
 fn do_div_ax_dx(ctx: &mut Ctx, divisor: PisOp, is_signed: bool) -> Result<()> {
     let operand_size = divisor.size;
-    let ax = ctx.decode_reg(SpecificReg::Rax.reg_encoding(), operand_size);
-    let dx = ctx.decode_reg(SpecificReg::Rdx.reg_encoding(), operand_size);
+    let ax = PisOp::reg(X86_REG_RAX.offset.0, operand_size);
+    let dx = PisOp::reg(X86_REG_RDX.offset.0, operand_size);
 
     if operand_size == PisSize::B8 {
         let div_op = if is_signed {
@@ -1449,7 +1449,7 @@ fn rep_begin(ctx: &mut Ctx) -> Result<RepCtx> {
     let loop_start_idx = ctx.emitter.insns.len();
 
     // first, check if `cx` is zero.
-    let cx = ctx.decode_reg(SpecificReg::Rcx.reg_encoding(), ctx.addr_size);
+    let cx = PisOp::reg(X86_REG_RCX.offset.0, ctx.addr_size);
     let zero = PisOp::constant(0, ctx.addr_size);
     let cx_equals_zero = ctx.emitter.op_binop(PisOpcode::Equals, cx, zero)?;
 
