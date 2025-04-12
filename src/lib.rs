@@ -61,6 +61,12 @@ impl PisSize {
     pub const fn mask(&self) -> u64 {
         self.max_unsigned_val()
     }
+
+    pub fn double(&self) -> Self {
+        Self {
+            bytes: NonZeroU8::new(self.bytes.get() * 2).unwrap(),
+        }
+    }
 }
 
 #[non_exhaustive]
@@ -150,16 +156,34 @@ pub enum PisOpcode {
     Sub,
     And,
     MulUnsigned,
+    MulSigned,
+    MulOverflowSigned,
+    DivUnsigned,
+    DivSigned,
+    RemUnsigned,
+    RemSigned,
+    Div16Unsigned,
+    Div16Signed,
+    Rem16Unsigned,
+    Rem16Signed,
+    JmpCall,
+    Jmp,
+    JmpCond,
+    JmpRet,
     Or,
     Xor,
     Zext,
+    Sext,
     UnsignedCarry,
     SignedCarry,
     Parity,
+    Halt,
     Equals,
     LessThanUnsigned,
     LessThanSigned,
     ShiftRightUnsigned,
+    ShiftRightSigned,
+    ShiftLeft,
 
     /// truncate an operand into a smaller size operand by only taking its lower bits>
     Trunc,
@@ -217,10 +241,10 @@ impl PisInsn {
 
 #[macro_export]
 macro_rules! pis_insn {
-    ($opcode: ident! $($operand: expr),+) => {
+    ($opcode: ident! $($operand: expr),*) => {
         crate::PisInsn {
             opcode: crate::PisOpcode::$opcode,
-            operands: crate::utils::array_vec![$($operand),+],
+            operands: crate::utils::array_vec![$($operand),*],
         }
     };
 }
@@ -321,6 +345,17 @@ impl PisEmitter {
         let tmp = self.tmp_op_allocator.alloc(new_size)?;
 
         self.emit(pis_insn!(Zext! tmp, x));
+
+        Ok(tmp)
+    }
+
+    /// sign extends the given operand into a tmp operand and returns it
+    pub fn op_sext(&mut self, x: PisOp, new_size: PisSize) -> Result<PisOp, TooManyTmpsErr> {
+        assert!(new_size >= x.size);
+
+        let tmp = self.tmp_op_allocator.alloc(new_size)?;
+
+        self.emit(pis_insn!(Sext! tmp, x));
 
         Ok(tmp)
     }
