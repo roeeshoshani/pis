@@ -745,7 +745,7 @@ fn ternary(ctx: &mut Ctx, cond: PisOp, then_val: PisOp, else_val: PisOp) -> Resu
     Ok(ctx.emitter.op_binop(PisOpcode::Or, true_case, false_case)?)
 }
 
-/// Updates the parity, zero, and sign flags for a shift operation result.
+/// updates the parity, zero, and sign flags for a shift operation result.
 fn update_shift_parity_zero_sign_flags(
     ctx: &mut Ctx,
     count: PisOp,
@@ -774,7 +774,7 @@ fn update_shift_parity_zero_sign_flags(
     Ok(())
 }
 
-/// Calculates the carry flag for a `SHL` operation.
+/// calculates the carry flag for a `SHL` operation.
 fn calc_c_f_shl(ctx: &mut Ctx, to_shift: PisOp, count: PisOp) -> Result<PisOp> {
     let operand_size = to_shift.size;
     let size_bits_op = PisOp::constant(operand_size.bits() as u64, operand_size);
@@ -793,7 +793,7 @@ fn calc_c_f_shl(ctx: &mut Ctx, to_shift: PisOp, count: PisOp) -> Result<PisOp> {
     ternary(ctx, is_count_0, X86_REG_FLAGS_CF, last_extracted_bit)
 }
 
-/// Calculates the overflow flag for a `SHL` operation (must be called after CF is calculated).
+/// calculates the overflow flag for a `SHL` operation (must be called after CF is calculated).
 fn calc_o_f_shl(
     ctx: &mut Ctx,
     to_shift: PisOp,
@@ -815,7 +815,7 @@ fn calc_o_f_shl(
     ternary(ctx, is_count_1, new_of, X86_REG_FLAGS_OF)
 }
 
-/// Mnemonic calculation for SHL.
+/// mnemonic calculation for SHL.
 fn mnm_calc_shl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     let count = mask_shift_count(ctx, rhs, operand_size)?;
@@ -837,7 +837,7 @@ fn mnm_calc_shl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// Calculates the carry flag for `SHR` or `SAR`.
+/// calculates the carry flag for `SHR` or `SAR`.
 fn calc_c_f_shr(ctx: &mut Ctx, to_shift: PisOp, count: PisOp) -> Result<PisOp> {
     let operand_size = to_shift.size;
 
@@ -856,7 +856,7 @@ fn calc_c_f_shr(ctx: &mut Ctx, to_shift: PisOp, count: PisOp) -> Result<PisOp> {
     ternary(ctx, is_count_0, X86_REG_FLAGS_CF, last_extracted_bit)
 }
 
-/// Calculates the overflow flag for `SHR`.
+/// calculates the overflow flag for `SHR`.
 fn calc_o_f_shr(ctx: &mut Ctx, to_shift: PisOp, count: PisOp) -> Result<PisOp> {
     let operand_size = to_shift.size;
 
@@ -870,7 +870,7 @@ fn calc_o_f_shr(ctx: &mut Ctx, to_shift: PisOp, count: PisOp) -> Result<PisOp> {
     ternary(ctx, is_count_1, new_of, X86_REG_FLAGS_OF)
 }
 
-/// Mnemonic calculation for SHR.
+/// mnemonic calculation for SHR.
 fn mnm_calc_shr(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     let count = mask_shift_count(ctx, rhs, operand_size)?;
@@ -894,7 +894,7 @@ fn mnm_calc_shr(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// Calculates the overflow flag for `SAR`.
+/// calculates the overflow flag for `SAR`.
 fn calc_o_f_sar(ctx: &mut Ctx, count: PisOp, operand_size: PisSize) -> Result<PisOp> {
     // OF = 0
     let new_of = PisOp::constant(0, PisSize::B1);
@@ -906,7 +906,7 @@ fn calc_o_f_sar(ctx: &mut Ctx, count: PisOp, operand_size: PisSize) -> Result<Pi
     ternary(ctx, is_count_1, new_of, X86_REG_FLAGS_OF)
 }
 
-/// Mnemonic calculation for SAR.
+/// mnemonic calculation for SAR.
 fn mnm_calc_sar(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     let count = mask_shift_count(ctx, rhs, operand_size)?;
@@ -930,7 +930,7 @@ fn mnm_calc_sar(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// Mnemonic calculation for ROL.
+/// mnemonic calculation for ROL.
 fn mnm_calc_rol(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     let count = mask_shift_count(ctx, rhs, operand_size)?;
@@ -962,7 +962,7 @@ fn mnm_calc_rol(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// Mnemonic calculation for ROR.
+/// mnemonic calculation for ROR.
 fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     let count = mask_shift_count(ctx, rhs, operand_size)?;
@@ -1006,7 +1006,7 @@ fn mnm_calc_ror(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// Mnemonic calculation for RCL.
+/// mnemonic calculation for RCL.
 fn mnm_calc_rcl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     // Mask count modulo (operand_bits + 1)
@@ -1027,7 +1027,7 @@ fn mnm_calc_rcl(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res) // Return potentially incorrect result
 }
 
-/// Mnemonic calculation for RCR.
+/// mnemonic calculation for RCR.
 fn mnm_calc_rcr(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let operand_size = lhs.size;
     // Mask count modulo (operand_bits + 1)
@@ -1047,7 +1047,7 @@ fn mnm_calc_rcr(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res) // Return potentially incorrect result
 }
 
-/// Performs a multiplication operation that operates on the `ax` operand and stores its
+/// performs a multiplication operation that operates on the `ax` operand and stores its
 /// result in the `ax` and `dx` operands.
 fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
     let operand_size = factor.size;
@@ -1109,12 +1109,12 @@ fn do_mul_ax(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
     Ok(())
 }
 
-/// Mnemonic calculation for MUL.
+/// mnemonic calculation for MUL.
 fn mnm_calc_mul(ctx: &mut Ctx, factor: PisOp) -> Result<()> {
     do_mul_ax(ctx, factor)
 }
 
-/// Mnemonic calculation for IMUL variants.
+/// mnemonic calculation for IMUL variants.
 fn mnm_calc_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     match ops.len() {
         1 => {
@@ -1189,7 +1189,7 @@ fn mnm_calc_imul(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     }
 }
 
-/// Performs division (DIV or IDIV).
+/// performs division (DIV or IDIV).
 fn do_div_ax_dx(ctx: &mut Ctx, divisor: PisOp, is_signed: bool) -> Result<()> {
     let operand_size = divisor.size;
     let ax = ctx.decode_reg(SpecificReg::Rax.reg_encoding(), operand_size);
@@ -1267,17 +1267,17 @@ fn do_div_ax_dx(ctx: &mut Ctx, divisor: PisOp, is_signed: bool) -> Result<()> {
     Ok(())
 }
 
-/// Mnemonic calculation for DIV.
+/// mnemonic calculation for DIV.
 fn mnm_calc_div(ctx: &mut Ctx, divisor: PisOp) -> Result<()> {
     do_div_ax_dx(ctx, divisor, false)
 }
 
-/// Mnemonic calculation for IDIV.
+/// mnemonic calculation for IDIV.
 fn mnm_calc_idiv(ctx: &mut Ctx, divisor: PisOp) -> Result<()> {
     do_div_ax_dx(ctx, divisor, true)
 }
 
-/// Mnemonic calculation for XCHG.
+/// mnemonic calculation for XCHG.
 fn mnm_calc_xchg(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
     assert_eq!(ops[0].size(), ops[1].size());
@@ -1296,7 +1296,7 @@ fn mnm_calc_xchg(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift MOVSXD (needs 64-bit mode check).
+/// lift MOVSXD (needs 64-bit mode check).
 fn lift_movsxd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
     // MOVSD behaves like MOVSXD only in 64-bit mode.
@@ -1323,7 +1323,7 @@ fn lift_movsxd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift MOVSX.
+/// lift MOVSX.
 fn lift_movsx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
     let dst_size = ops[0].size();
@@ -1339,7 +1339,7 @@ fn lift_movsx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift MOVZX.
+/// lift MOVZX.
 fn lift_movzx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
     let dst_size = ops[0].size();
@@ -1355,7 +1355,7 @@ fn lift_movzx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift CWD/CDQ/CQO.
+/// lift CWD/CDQ/CQO.
 fn lift_cwd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2); // Implicit ops: DX, AX (or EDX, EAX or RDX, RAX)
     let dst_op = &ops[0]; // DX/EDX/RDX
@@ -1372,7 +1372,7 @@ fn lift_cwd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Push IP onto the stack.
+/// push IP onto the stack.
 fn push_ip(ctx: &mut Ctx) -> Result<()> {
     // RIP value points *after* the current instruction.
     let cur_insn_end_addr = ctx.args.cur_code_addr(); // Get address *after* the instruction bytes are consumed
@@ -1386,7 +1386,7 @@ fn push_ip(ctx: &mut Ctx) -> Result<()> {
     push(ctx, push_value_op)
 }
 
-/// Lift CALL.
+/// lift CALL.
 fn lift_call(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
     // Ensure no size override prefixes for branches
@@ -1411,7 +1411,7 @@ fn lift_call(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift JMP.
+/// lift JMP.
 fn lift_jmp(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
     // Ensure no size override prefixes for branches
@@ -1431,7 +1431,7 @@ fn lift_jmp(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift Jcc.
+/// lift JCC.
 fn lift_jcc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
     // Ensure no size override prefixes for branches
@@ -1453,7 +1453,7 @@ fn lift_jcc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift RET.
+/// lift RET.
 fn lift_ret(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty()); // Basic RET has no explicit operands
 
@@ -1466,17 +1466,17 @@ fn lift_ret(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Holds the actual context data for REP prefix handling when the F3 prefix is active.
+/// holds the actual context data for REP prefix handling when the F3 prefix is active.
 #[derive(Debug, Clone, Copy)]
 struct RepCtxInner {
-    /// The PIS instruction index where the loop should jump back to.
+    /// the PIS instruction index where the loop should jump back to.
     insn_index_at_loop_start: usize,
-    /// The PIS instruction index of the initial JmpCond instruction
+    /// the PIS instruction index of the initial Jmpcond instruction
     /// (which skips the loop if CX is initially zero) that needs patching.
     jmp_end_insn_idx: usize,
 }
 
-/// Wrapper struct for REP context, handling the optionality internally.
+/// wrapper struct for REP context, handling the optionality internally.
 #[derive(Debug, Clone, Copy)]
 struct RepCtx(Option<RepCtxInner>);
 
@@ -1560,7 +1560,7 @@ fn lift_stos(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift MOVS.
+/// lift MOVS.
 fn lift_movs(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
 
@@ -1588,7 +1588,7 @@ fn lift_movs(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift CMPS.
+/// lift CMPS.
 fn lift_cmps(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
 
@@ -1620,7 +1620,7 @@ fn lift_cmps(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift LODS.
+/// lift LODS.
 fn lift_lods(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
 
@@ -1643,7 +1643,7 @@ fn lift_lods(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift SCAS.
+/// lift SCAS.
 fn lift_scas(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
     let operand_size = ops[0].size();
@@ -1669,14 +1669,14 @@ fn lift_scas(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift HLT.
+/// lift HLT.
 fn lift_hlt(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     ctx.emit(pis_insn!(Halt!)); // Assuming Halt opcode exists
     Ok(())
 }
 
-/// Lift CMC.
+/// lift CMC.
 fn lift_cmc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     // CF = !CF
@@ -1685,14 +1685,14 @@ fn lift_cmc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift CLC.
+/// lift CLC.
 fn lift_clc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     ctx.emitter.op_move_zero(X86_REG_FLAGS_CF);
     Ok(())
 }
 
-/// Lift STC.
+/// lift STC.
 fn lift_stc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     ctx.emitter
@@ -1700,7 +1700,7 @@ fn lift_stc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift CLI.
+/// lift CLI.
 fn lift_cli(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     // Requires ring 0. In PIS, just clear the flag.
@@ -1708,7 +1708,7 @@ fn lift_cli(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift STI.
+/// lift STI.
 fn lift_sti(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     // Requires ring 0. In PIS, just set the flag.
@@ -1717,14 +1717,14 @@ fn lift_sti(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// Lift CLD.
+/// lift CLD.
 fn lift_cld(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     ctx.emitter.op_move_zero(X86_REG_FLAGS_DF);
     Ok(())
 }
 
-/// Lift STD.
+/// lift STD.
 fn lift_std(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
     ctx.emitter
