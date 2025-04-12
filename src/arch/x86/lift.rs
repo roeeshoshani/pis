@@ -308,12 +308,7 @@ fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 }
 
 /// calculates the value of the overflow flag for a subtraction operation `a - b`.
-fn calc_sub_overflow_flag_value(
-    ctx: &mut Ctx,
-    lhs: PisOp,
-    rhs: PisOp,
-    sub_res: PisOp,
-) -> Result<PisOp> {
+fn calc_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, sub_res: PisOp) -> Result<PisOp> {
     // calculate the sign bit of the subtraction result
     let sub_res_msb = calc_msb(ctx, sub_res)?;
 
@@ -334,22 +329,44 @@ fn calc_sub_overflow_flag_value(
     ctx.op_xor(sub_res_msb, lhs_less_than_rhs)
 }
 
+/// updates the value of the overflow flag according to a subtraction operation `a - b`.
+fn update_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, sub_res: PisOp) -> Result<()> {
+    let o_f = calc_o_f_sub(ctx, lhs, rhs, sub_res)?;
+    ctx.op_move(X86_REG_FLAGS_OF, o_f);
+    Ok(())
+}
+
+/// updates the value of the carry flag according to a subtraction operation `a - b`.
+fn update_c_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
+    ctx.emit(pis_insn!(LessThanUnsigned! X86_REG_FLAGS_CF, lhs, rhs));
+}
+
 /// the mnemonic calculation of the SUB opcode.
 fn mnm_calc_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_sub(lhs, rhs)?;
 
-    ctx.emit(pis_insn!(LessThanUnsigned! X86_REG_FLAGS_CF, lhs, rhs));
+    update_c_f_sub(ctx, lhs, rhs);
+    update_o_f_sub(ctx, lhs, rhs, res)?;
+    update_parity_zero_sign_flags(ctx, res)?;
 
-    let of = calc_sub_overflow_flag_value(ctx, lhs, rhs, res)?;
-    ctx.op_move(X86_REG_FLAGS_OF, of);
+    Ok(res)
+}
 
+/// the mnemonic calculation of the DEC opcode.
+fn mnm_calc_dec(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
+    let one = PisOp::constant(1, value.size);
+
+    let res = ctx.op_sub(value, one)?;
+
+    // NOTE: the carry flag is not updated when using DEC
+    update_o_f_sub(ctx, value, one, res)?;
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
 }
 
 /// set the carry flag and overflow flag to zero.
-fn set_cf_of_to_zero(ctx: &mut Ctx) {
+fn zero_c_f_and_o_f(ctx: &mut Ctx) {
     ctx.op_move_zero(X86_REG_FLAGS_CF);
     ctx.op_move_zero(X86_REG_FLAGS_OF);
 }
@@ -358,7 +375,7 @@ fn set_cf_of_to_zero(ctx: &mut Ctx) {
 fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_or(lhs, rhs)?;
 
-    set_cf_of_to_zero(ctx);
+    zero_c_f_and_o_f(ctx);
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
@@ -368,7 +385,7 @@ fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 fn mnm_calc_xor(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_xor(lhs, rhs)?;
 
-    set_cf_of_to_zero(ctx);
+    zero_c_f_and_o_f(ctx);
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
@@ -378,16 +395,19 @@ fn mnm_calc_xor(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 fn mnm_calc_and(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_and(lhs, rhs)?;
 
-    set_cf_of_to_zero(ctx);
+    zero_c_f_and_o_f(ctx);
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
 }
 
+/// lift a binary operator mnemonic
 fn lift_binop<F>(ctx: &mut Ctx, ops: &[LiftedOp], calc: F, store_result: bool) -> Result<()>
 where
     F: FnOnce(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
 {
+    assert_eq!(ops.len(), 2);
+
     let lhs = ops[0].read(ctx)?;
     let rhs = ops[1].read(ctx)?;
 
@@ -402,6 +422,22 @@ where
     Ok(())
 }
 
+/// lift a unary operator mnemonic
+fn lift_unop<F>(ctx: &mut Ctx, ops: &[LiftedOp], calc: F) -> Result<()>
+where
+    F: FnOnce(&mut Ctx, PisOp) -> Result<PisOp>,
+{
+    assert_eq!(ops.len(), 1);
+
+    let value = ops[0].read(ctx)?;
+
+    let result = calc(ctx, value)?;
+
+    ops[0].write(result, ctx);
+
+    Ok(())
+}
+
 fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
     match mnemonic {
         Mnemonic::Unsupported => Err(LiftErr::UnsupportedInsn),
@@ -412,7 +448,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::And => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Sub => lift_binop(ctx, ops, mnm_calc_sub, true),
         Mnemonic::Xor => lift_binop(ctx, ops, mnm_calc_xor, true),
-        Mnemonic::Cmp => todo!(),
+        Mnemonic::Cmp => lift_binop(ctx, ops, mnm_calc_sub, false),
         Mnemonic::Rol => todo!(),
         Mnemonic::Ror => todo!(),
         Mnemonic::Rcl => todo!(),
@@ -421,7 +457,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Shr => todo!(),
         Mnemonic::Sar => todo!(),
         Mnemonic::Inc => todo!(),
-        Mnemonic::Dec => todo!(),
+        Mnemonic::Dec => lift_unop(ctx, ops, mnm_calc_dec),
         Mnemonic::Push => todo!(),
         Mnemonic::Pop => todo!(),
         Mnemonic::Movsxd => todo!(),
