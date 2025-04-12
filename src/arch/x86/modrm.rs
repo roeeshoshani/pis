@@ -74,7 +74,7 @@ fn decode_disp(ctx: &mut Ctx) -> Result<Option<PisOp>> {
 
 fn decode_and_apply_disp(ctx: &mut Ctx, base_regs: PisOp) -> Result<PisOp> {
     let maybe_disp = decode_disp(ctx)?;
-    ctx.op_add_opt(base_regs, maybe_disp)
+    Ok(ctx.emitter.op_add_opt(base_regs, maybe_disp)?)
 }
 
 fn decode_sib(ctx: &mut Ctx, modrm: Modrm) -> Result<PisOp> {
@@ -113,10 +113,13 @@ fn decode_sib(ctx: &mut Ctx, modrm: Modrm) -> Result<PisOp> {
         let mul_factor = 1u64 << scale;
         let mul_factor_op = PisOp::constant(mul_factor, ctx.addr_size);
 
-        Some(ctx.op_binop(PisOpcode::MulUnsigned, index_reg, mul_factor_op)?)
+        Some(
+            ctx.emitter
+                .op_binop(PisOpcode::MulUnsigned, index_reg, mul_factor_op)?,
+        )
     };
 
-    ctx.op_add_opt(base_op, maybe_scaled_index)
+    Ok(ctx.emitter.op_add_opt(base_op, maybe_scaled_index)?)
 }
 
 /// decodes the address of the modrm memory operand in 32 or 64 bit address size, in the non-special case.
@@ -153,7 +156,7 @@ fn decode_rm_memory_64(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
             ext_kind: ImmExtKind::Sign,
             endian: PisEndian::Little,
         })?;
-        return Ok(MemOpAddr(ctx.op_binop(
+        return Ok(MemOpAddr(ctx.emitter.op_binop(
             PisOpcode::Add,
             X86_REG_RIP,
             disp,
@@ -188,10 +191,18 @@ fn decode_rm_memory_16(ctx: &mut Ctx, modrm: Modrm) -> Result<MemOpAddr> {
 
     // handle base regs
     let base_regs = match rm {
-        0b000 => ctx.op_binop(PisOpcode::Add, X86_REG_BX, X86_REG_SI)?,
-        0b001 => ctx.op_binop(PisOpcode::Add, X86_REG_BX, X86_REG_DI)?,
-        0b010 => ctx.op_binop(PisOpcode::Add, X86_REG_BP, X86_REG_SI)?,
-        0b011 => ctx.op_binop(PisOpcode::Add, X86_REG_BP, X86_REG_DI)?,
+        0b000 => ctx
+            .emitter
+            .op_binop(PisOpcode::Add, X86_REG_BX, X86_REG_SI)?,
+        0b001 => ctx
+            .emitter
+            .op_binop(PisOpcode::Add, X86_REG_BX, X86_REG_DI)?,
+        0b010 => ctx
+            .emitter
+            .op_binop(PisOpcode::Add, X86_REG_BP, X86_REG_SI)?,
+        0b011 => ctx
+            .emitter
+            .op_binop(PisOpcode::Add, X86_REG_BP, X86_REG_DI)?,
         0b100 => X86_REG_SI,
         0b101 => X86_REG_DI,
         0b110 => X86_REG_BP,
