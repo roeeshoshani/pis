@@ -303,19 +303,29 @@ type MnmCalc = fn(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp>;
 
 /// the mnemonic calculation of the ADD opcode.
 fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    assert_eq!(lhs.size, rhs.size);
-
     let res = ctx.op_add(lhs, rhs)?;
 
     // carry flag
-    ctx.res
-        .insns
-        .push(pis_insn!(UnsignedCarry! X86_REG_FLAGS_CF, lhs, rhs));
+    ctx.emit(pis_insn!(UnsignedCarry! X86_REG_FLAGS_CF, lhs, rhs));
 
     // overflow flag
-    ctx.res
-        .insns
-        .push(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
+    ctx.emit(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
+
+    // other flags
+    update_parity_zero_sign_flags(ctx, res)?;
+
+    Ok(res)
+}
+
+/// the mnemonic calculation of the OR opcode.
+fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    let res = ctx.op_or(lhs, rhs)?;
+
+    // carry flag
+    ctx.op_move(X86_REG_FLAGS_CF, PisOp::constant(0, PisSize::B1));
+
+    // overflow flag
+    ctx.op_move(X86_REG_FLAGS_OF, PisOp::constant(0, PisSize::B1));
 
     // other flags
     update_parity_zero_sign_flags(ctx, res)?;
@@ -327,6 +337,8 @@ fn lift_binop(ctx: &mut Ctx, ops: &[LiftedOp], calc: MnmCalc, store_result: bool
     let lhs = ops[0].read(ctx)?;
     let rhs = ops[1].read(ctx)?;
 
+    assert_eq!(lhs.size, rhs.size);
+
     let res = calc(ctx, lhs, rhs)?;
 
     if store_result {
@@ -336,15 +348,11 @@ fn lift_binop(ctx: &mut Ctx, ops: &[LiftedOp], calc: MnmCalc, store_result: bool
     Ok(())
 }
 
-fn lift_mnm_add(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
-    lift_binop(ctx, ops, mnm_calc_add, true)
-}
-
-fn lift_mnemonic(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
+fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
     match mnemonic {
         Mnemonic::Unsupported => Err(LiftErr::UnsupportedInsn),
-        Mnemonic::Add => lift_mnm_add(ctx, ops),
-        Mnemonic::Or => todo!(),
+        Mnemonic::Add => lift_binop(ctx, ops, mnm_calc_add, true),
+        Mnemonic::Or => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Adc => todo!(),
         Mnemonic::Sbb => todo!(),
         Mnemonic::And => todo!(),
@@ -401,7 +409,7 @@ fn lift_regular_insn_info(ctx: &mut Ctx, insn_info: &RegularInsnInfo) -> Result<
     for op in insn_info.ops {
         lifted_ops.push(lift_op(ctx, op)?);
     }
-    lift_mnemonic(ctx, insn_info.mnemonic, &lifted_ops)
+    lift_mnm(ctx, insn_info.mnemonic, &lifted_ops)
 }
 
 fn lift_post_opcode_decode(ctx: &mut Ctx) -> Result<()> {
