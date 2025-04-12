@@ -387,7 +387,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Imul => todo!(),
         Mnemonic::Mul => todo!(),
         Mnemonic::Jcc => todo!(),
-        Mnemonic::Test => todo!(),
+        Mnemonic::Test => lift_binop(ctx, ops, mnm_calc_and, false),
         Mnemonic::Xchg => todo!(),
         Mnemonic::Mov => todo!(),
         Mnemonic::Lea => todo!(),
