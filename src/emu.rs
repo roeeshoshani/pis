@@ -224,6 +224,11 @@ impl PisEmu {
                 Ok(())
             }
             PisOpcode::CondNeg => todo!(),
+            PisOpcode::Sub => todo!(),
+            PisOpcode::LessThanUnsigned => todo!(),
+            PisOpcode::LessThanSigned => todo!(),
+            PisOpcode::Not => todo!(),
+            PisOpcode::Neg => todo!(),
         }
     }
 }
