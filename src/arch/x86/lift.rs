@@ -70,6 +70,14 @@ impl LiftedOp {
             LiftedOp::Implicit(pis_size) => unreachable!(),
         }
     }
+    pub fn size(&self) -> PisSize {
+        match self {
+            LiftedOp::Value(value) => value.size,
+            LiftedOp::Reg(reg) => reg.size,
+            LiftedOp::Mem(mem_op) => mem_op.size,
+            LiftedOp::Implicit(size) => *size,
+        }
+    }
 }
 
 pub fn apply_rex_bit_to_reg_encoding(reg_encoding: u8, rex_bit: bool) -> u8 {
@@ -430,11 +438,10 @@ where
     F: FnOnce(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
 {
     assert_eq!(ops.len(), 2);
+    assert_eq!(ops[0].size(), ops[1].size());
 
     let lhs = ops[0].read(ctx)?;
     let rhs = ops[1].read(ctx)?;
-
-    assert_eq!(lhs.size, rhs.size);
 
     let res = calc(ctx, lhs, rhs)?;
 
@@ -457,6 +464,17 @@ where
     let result = calc(ctx, value)?;
 
     ops[0].write(result, ctx);
+
+    Ok(())
+}
+
+/// lift a MOV opcode
+fn lift_mov(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    assert_eq!(ops.len(), 2);
+    assert_eq!(ops[0].size(), ops[1].size());
+
+    let value = ops[1].read(ctx)?;
+    ops[0].write(value, ctx);
 
     Ok(())
 }
@@ -489,7 +507,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Jcc => todo!(),
         Mnemonic::Test => lift_binop(ctx, ops, mnm_calc_and, false),
         Mnemonic::Xchg => todo!(),
-        Mnemonic::Mov => todo!(),
+        Mnemonic::Mov => lift_mov(ctx, ops),
         Mnemonic::Lea => todo!(),
         Mnemonic::Nop => todo!(),
         Mnemonic::Movsx => todo!(),
