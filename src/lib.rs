@@ -263,6 +263,13 @@ impl PisEmitter {
         self.insns.push(insn);
     }
 
+    /// copies the value of the given operand into a new tmp operand.
+    pub fn copy_value(&mut self, x: PisOp) -> Result<PisOp, TooManyTmpsErr> {
+        let tmp = self.tmp_op_allocator.alloc(x.size)?;
+        self.op_move(tmp, x);
+        Ok(tmp)
+    }
+
     /// performs the given binary (two operand) operation on the given 2 operands into a new tmp operand and returns it.
     ///
     /// the provided opcode must be a binary operation opcode, which accepts 3 operands - a dst operand and 2 src operands.

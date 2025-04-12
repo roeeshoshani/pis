@@ -5,7 +5,7 @@ use super::{
     tables::{OpInfo, RegularInsnInfo, SpecificReg},
     tmp_op_allocator::TmpOpAllocator,
     LiftRes, Result, X86Cpumode, X86_INSN_MAX_OPS, X86_REG_FLAGS_CF, X86_REG_FLAGS_OF,
-    X86_REG_FLAGS_PF, X86_REG_FLAGS_SF, X86_REG_FLAGS_ZF, X86_REG_RAX, X86_REG_RIP,
+    X86_REG_FLAGS_PF, X86_REG_FLAGS_SF, X86_REG_FLAGS_ZF, X86_REG_RAX, X86_REG_RIP, X86_REG_RSP,
 };
 use crate::{
     arch::x86::tables::{InsnInfo, Mnemonic, RegEncoding},
@@ -651,6 +651,54 @@ fn mnm_calc_sbb(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     )
 }
 
+fn push(ctx: &mut Ctx, value: PisOp) -> Result<()> {
+    // copy the pushed operand before subtracting sp. this makes sure that instructions like `push rsp` behave properly,
+    // by pushing the original value, before the subtraction.
+    let value_copy = ctx.emitter.copy_value(value)?;
+
+    let sp = ctx.sp();
+
+    let sub_sp_amount = value.size.bytes();
+    let sub_sp_amount_op = PisOp::constant(sub_sp_amount as u64, sp.size);
+
+    ctx.emitter.emit(pis_insn!(Sub! sp, sp, sub_sp_amount_op));
+    ctx.emitter.emit(pis_insn!(Store! sp, value_copy));
+
+    Ok(())
+}
+
+fn pop(ctx: &mut Ctx, size: PisSize) -> Result<PisOp> {
+    let sp = ctx.sp();
+
+    let tmp = ctx.emitter.tmp_op_allocator.alloc(size)?;
+
+    let add_sp_amount = size.bytes();
+    let add_sp_amount_op = PisOp::constant(add_sp_amount as u64, sp.size);
+
+    ctx.emitter.emit(pis_insn!(Load! tmp, sp));
+    ctx.emitter.emit(pis_insn!(Add! sp, sp, add_sp_amount_op));
+
+    Ok(tmp)
+}
+
+fn lift_push(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    assert_eq!(ops.len(), 1);
+
+    let value = ops[0].read(ctx)?;
+    push(ctx, value)?;
+
+    Ok(())
+}
+
+fn lift_pop(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
+    assert_eq!(ops.len(), 1);
+
+    let value = pop(ctx, ops[0].size())?;
+    ops[0].write(value, ctx);
+
+    Ok(())
+}
+
 fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
     match mnemonic {
         Mnemonic::Unsupported => Err(LiftErr::UnsupportedInsn),
@@ -671,8 +719,8 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Sar => todo!(),
         Mnemonic::Inc => lift_unop(ctx, ops, mnm_calc_inc),
         Mnemonic::Dec => lift_unop(ctx, ops, mnm_calc_dec),
-        Mnemonic::Push => todo!(),
-        Mnemonic::Pop => todo!(),
+        Mnemonic::Push => lift_push(ctx, ops),
+        Mnemonic::Pop => lift_pop(ctx, ops),
         Mnemonic::Movsxd => todo!(),
         Mnemonic::Imul => todo!(),
         Mnemonic::Mul => todo!(),

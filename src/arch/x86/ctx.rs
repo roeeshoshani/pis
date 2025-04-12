@@ -4,7 +4,7 @@ use crate::{pis_insn, utils::array_vec, LiftArgsInternal, PisEmitter, PisInsn, P
 
 use super::{
     lift::Modrm, prefixes::Prefixes, tables::OpcodeByteTable, tmp_op_allocator::TmpOpAllocator,
-    LiftRes, PisSize, Result, X86Cpumode,
+    LiftRes, PisSize, Result, X86Cpumode, X86_REG_RSP,
 };
 
 /// the initial context after just getting the lift args and deciding the desired cpumode
@@ -34,6 +34,9 @@ pub struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
+    pub fn sp(&self) -> PisOp {
+        PisOp::reg(X86_REG_RSP.offset.0, self.addr_size)
+    }
     pub fn emit(&mut self, insn: PisInsn) {
         self.emitter.emit(insn);
     }
