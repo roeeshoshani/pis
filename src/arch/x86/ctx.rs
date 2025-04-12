@@ -50,13 +50,13 @@ impl<'a> Ctx<'a> {
     /// performs the given binary (two operand) operation on the given 2 operands into a new tmp operand and returns it.
     ///
     /// the provided opcode must be a binary operation opcode, which accepts 3 operands - a dst operand and 2 src operands.
-    fn op_binop(&mut self, opcode: PisOpcode, a: PisOp, b: PisOp) -> Result<PisOp> {
-        assert_eq!(a.size, b.size);
-        let tmp = self.tmp_op_allocator.alloc(a.size)?;
+    pub fn op_binop(&mut self, opcode: PisOpcode, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+        assert_eq!(lhs.size, rhs.size);
+        let tmp = self.tmp_op_allocator.alloc(lhs.size)?;
 
         self.emit(PisInsn {
             opcode,
-            operands: array_vec![tmp, a, b],
+            operands: array_vec![tmp, lhs, rhs],
         });
 
         Ok(tmp)
@@ -65,7 +65,7 @@ impl<'a> Ctx<'a> {
     /// performs the given unary (single operand) operation on the given operand into a new tmp operand and returns it.
     ///
     /// the provided opcode must be a unary operation opcode, which accepts 2 operands - a dst operand and a src operand.
-    fn op_unop(&mut self, opcode: PisOpcode, x: PisOp) -> Result<PisOp> {
+    pub fn op_unop(&mut self, opcode: PisOpcode, x: PisOp) -> Result<PisOp> {
         let tmp = self.tmp_op_allocator.alloc(x.size)?;
 
         self.emit(PisInsn {
@@ -74,26 +74,6 @@ impl<'a> Ctx<'a> {
         });
 
         Ok(tmp)
-    }
-
-    /// performs conditional negation on the given operand into a tmp operand and returns it
-    pub fn op_cond_neg(&mut self, x: PisOp) -> Result<PisOp> {
-        self.op_unop(PisOpcode::CondNeg, x)
-    }
-
-    /// performs a bitwise-not operation on the given operand into a tmp operand and returns it
-    pub fn op_not(&mut self, x: PisOp) -> Result<PisOp> {
-        self.op_unop(PisOpcode::Not, x)
-    }
-
-    /// performs a negation operation on the given operand into a tmp operand and returns it
-    pub fn op_neg(&mut self, x: PisOp) -> Result<PisOp> {
-        self.op_unop(PisOpcode::Neg, x)
-    }
-
-    /// performs parity calculation on the given operand into a tmp operand and returns it
-    pub fn op_parity(&mut self, x: PisOp) -> Result<PisOp> {
-        self.op_unop(PisOpcode::Parity, x)
     }
 
     /// moves the src operand into the dst operand
@@ -128,60 +108,15 @@ impl<'a> Ctx<'a> {
         Ok(tmp)
     }
 
-    /// calculates the equality of the given 2 operands into a new tmp operand and returns it.
-    pub fn op_equals(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::Equals, a, b)
-    }
-
-    /// checks if a is less than b when treated as signed integers, stores the result into a new tmp operand and returns it.
-    pub fn op_less_than_signed(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::LessThanSigned, a, b)
-    }
-
-    /// adds the given 2 operands into a new tmp operand and returns it.
-    pub fn op_add(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::Add, a, b)
-    }
-
-    /// subtracts the given 2 operands into a new tmp operand and returns it.
-    pub fn op_sub(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::Sub, a, b)
-    }
-
-    /// calculates `a >> b` into a new tmp operand and returns it. uses an unsigned shift.
-    pub fn op_shift_right_unsigned(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::ShiftRightUnsigned, a, b)
-    }
-
-    /// "bitwise-and"s the given 2 operands into a new tmp operand and returns it.
-    pub fn op_and(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::And, a, b)
-    }
-
-    /// "bitwise-or"s the given 2 operands into a new tmp operand and returns it.
-    pub fn op_or(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::Or, a, b)
-    }
-
-    /// "bitwise-xor"s the given 2 operands into a new tmp operand and returns it.
-    pub fn op_xor(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::Xor, a, b)
-    }
-
     /// performs an optional add operation on the given 2 operands.
     /// the first operand is mandatory, but the second is optional.
     /// if the second operand is none, the first operand is returned as is.
     /// if the second operand is some value, it is added to the first operand, and the result is stored into a tmp, which is
     /// then returned.
-    pub fn op_add_opt(&mut self, a: PisOp, b: Option<PisOp>) -> Result<PisOp> {
-        match b {
-            Some(b) => self.op_add(a, b),
-            None => Ok(a),
+    pub fn op_add_opt(&mut self, lhs: PisOp, rhs: Option<PisOp>) -> Result<PisOp> {
+        match rhs {
+            Some(rhs) => self.op_binop(PisOpcode::Add, lhs, rhs),
+            None => Ok(lhs),
         }
-    }
-
-    /// adds the given 2 operands into a new tmp operand and returns it.
-    pub fn op_mul_unsigned(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
-        self.op_binop(PisOpcode::MulUnsigned, a, b)
     }
 }

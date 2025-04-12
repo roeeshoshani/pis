@@ -148,13 +148,13 @@ impl CondKind {
             CondKind::Overflow => Ok(X86_REG_FLAGS_OF),
             CondKind::Below => Ok(X86_REG_FLAGS_CF),
             CondKind::Equals => Ok(X86_REG_FLAGS_ZF),
-            CondKind::BelowEqual => ctx.op_or(X86_REG_FLAGS_ZF, X86_REG_FLAGS_CF),
+            CondKind::BelowEqual => ctx.op_binop(PisOpcode::Or, X86_REG_FLAGS_ZF, X86_REG_FLAGS_CF),
             CondKind::Sign => Ok(X86_REG_FLAGS_SF),
             CondKind::Parity => Ok(X86_REG_FLAGS_PF),
-            CondKind::Lower => ctx.op_xor(X86_REG_FLAGS_SF, X86_REG_FLAGS_OF),
+            CondKind::Lower => ctx.op_binop(PisOpcode::Xor, X86_REG_FLAGS_SF, X86_REG_FLAGS_OF),
             CondKind::LowerEqual => {
-                let lower = ctx.op_xor(X86_REG_FLAGS_SF, X86_REG_FLAGS_OF)?;
-                ctx.op_or(lower, X86_REG_FLAGS_ZF)
+                let lower = ctx.op_binop(PisOpcode::Xor, X86_REG_FLAGS_SF, X86_REG_FLAGS_OF)?;
+                ctx.op_binop(PisOpcode::Or, lower, X86_REG_FLAGS_ZF)
             }
         }
     }
@@ -232,9 +232,12 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
                 endian: PisEndian::Little,
             })?;
             let mask = calc_near_branch_ip_mask(ctx);
-            Ok(LiftedOp::Value(
-                ctx.op_and(X86_REG_RIP, PisOp::constant(mask, PisSize::B8))?,
-            ))
+            let mask_op = PisOp::constant(mask, PisSize::B8);
+            Ok(LiftedOp::Value(ctx.op_binop(
+                PisOpcode::And,
+                X86_REG_RIP,
+                mask_op,
+            )?))
         }
         OpInfo::MemOffset(info) => {
             // abs memory addr encoded as immediate
@@ -254,22 +257,55 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
             let cond = Cond::from_bits(ctx.opcode_byte & 0b1111);
             let mut result = cond.kind().lift(ctx)?;
             if cond.is_negative() {
-                result = ctx.op_cond_neg(result)?;
+                result = ctx.op_unop(PisOpcode::CondNeg, result)?;
             }
             Ok(LiftedOp::Value(result))
         }
     }
 }
 
+fn binop_update_flag<F>(
+    ctx: &mut Ctx,
+    lhs: PisOp,
+    rhs: PisOp,
+    flag_reg: PisOp,
+    calc: F,
+) -> Result<()>
+where
+    F: FnOnce(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+{
+    let value = calc(ctx, lhs, rhs)?;
+    ctx.op_move(flag_reg, value);
+    Ok(())
+}
+
+fn binop_update_c_f<F>(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, calc: F) -> Result<()>
+where
+    F: FnOnce(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+{
+    binop_update_flag(ctx, lhs, rhs, X86_REG_FLAGS_CF, calc)
+}
+
+fn binop_update_o_f<F>(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, calc: F) -> Result<()>
+where
+    F: FnOnce(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+{
+    binop_update_flag(ctx, lhs, rhs, X86_REG_FLAGS_OF, calc)
+}
+
 /// calculates the parity flag value of the given calculation result.
 fn calc_pf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
     let low_byte = ctx.op_trunc(calc_res, PisSize::B1)?;
-    ctx.op_parity(low_byte)
+    ctx.op_unop(PisOpcode::Parity, low_byte)
 }
 
 /// calculates the zero flag value of the given calculation result.
 fn calc_zf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
-    ctx.op_equals(calc_res, PisOp::constant(0, calc_res.size))
+    ctx.op_binop(
+        PisOpcode::Equals,
+        calc_res,
+        PisOp::constant(0, calc_res.size),
+    )
 }
 
 /// calculates the most significant bit of the given value.
@@ -278,8 +314,8 @@ fn calc_zf(ctx: &mut Ctx, calc_res: PisOp) -> Result<PisOp> {
 fn calc_msb(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
     // shift it right such that the msb becomes the lsb
     let shift_amount = value.size.bits() - 1;
-    let shifted =
-        ctx.op_shift_right_unsigned(value, PisOp::constant(shift_amount as u64, value.size))?;
+    let shift_amount_op = PisOp::constant(shift_amount as u64, value.size);
+    let shifted = ctx.op_binop(PisOpcode::ShiftRightUnsigned, value, shift_amount_op)?;
 
     // truncate it to 1 byte
     ctx.op_trunc(shifted, PisSize::B1)
@@ -304,39 +340,47 @@ fn update_parity_zero_sign_flags(ctx: &mut Ctx, calc_res: PisOp) -> Result<()> {
     Ok(())
 }
 
-/// updates the value of the carry flag according to a addtraction operation `a - b`.
-fn update_c_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
-    ctx.emit(pis_insn!(UnsignedCarry! X86_REG_FLAGS_CF, lhs, rhs));
+/// calculates the value of the carry flag according to a addition operation `a + b`.
+fn calc_c_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    ctx.op_binop(PisOpcode::UnsignedCarry, lhs, rhs)
 }
 
 /// updates the value of the overflow flag according to a addition operation `a + b`.
-fn update_o_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
-    ctx.emit(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
+fn calc_o_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    ctx.op_binop(PisOpcode::SignedCarry, lhs, rhs)
+}
+
+fn update_c_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<()> {
+    binop_update_c_f(ctx, lhs, rhs, calc_c_f_add)
+}
+fn update_o_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<()> {
+    binop_update_o_f(ctx, lhs, rhs, calc_o_f_add)
 }
 
 /// the mnemonic calculation of the ADD mnemonic.
 fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    let res = ctx.op_add(lhs, rhs)?;
+    let res = ctx.op_binop(PisOpcode::Add, lhs, rhs)?;
 
-    update_c_f_add(ctx, lhs, rhs);
-    update_o_f_add(ctx, lhs, rhs);
+    update_c_f_add(ctx, lhs, rhs)?;
+    update_o_f_add(ctx, lhs, rhs)?;
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
 }
 
-/// updates the value of the carry flag according to a subtraction operation `a - b`.
-fn update_c_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
-    ctx.emit(pis_insn!(LessThanUnsigned! X86_REG_FLAGS_CF, lhs, rhs));
+/// calculates the value of the carry flag according to a subtraction operation `a - b`.
+fn calc_c_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    ctx.op_binop(PisOpcode::LessThanUnsigned, lhs, rhs)
 }
 
 /// calculates the value of the overflow flag for a subtraction operation `a - b`.
-fn calc_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, sub_res: PisOp) -> Result<PisOp> {
+fn calc_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     // calculate the sign bit of the subtraction result
+    let sub_res = ctx.op_binop(PisOpcode::Sub, lhs, rhs)?;
     let sub_res_msb = calc_msb(ctx, sub_res)?;
 
     // check if lhs < rhs
-    let lhs_less_than_rhs = ctx.op_less_than_signed(lhs, rhs)?;
+    let lhs_less_than_rhs = ctx.op_binop(PisOpcode::LessThanSigned, lhs, rhs)?;
 
     // the overflow can be calculated by xoring the less than condition with the sign bit.
     //
@@ -349,22 +393,22 @@ fn calc_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, sub_res: PisOp) -> Result
     // is 0 and sign is 1, it is an overflow.
     //
     // both of those cases can be detected by just xoring these values together.
-    ctx.op_xor(sub_res_msb, lhs_less_than_rhs)
+    ctx.op_binop(PisOpcode::Xor, sub_res_msb, lhs_less_than_rhs)
 }
 
-/// updates the value of the overflow flag according to a subtraction operation `a - b`.
-fn update_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, sub_res: PisOp) -> Result<()> {
-    let o_f = calc_o_f_sub(ctx, lhs, rhs, sub_res)?;
-    ctx.op_move(X86_REG_FLAGS_OF, o_f);
-    Ok(())
+fn update_c_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<()> {
+    binop_update_c_f(ctx, lhs, rhs, calc_c_f_sub)
+}
+fn update_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<()> {
+    binop_update_o_f(ctx, lhs, rhs, calc_o_f_sub)
 }
 
 /// the mnemonic calculation of the SUB mnemonic.
 fn mnm_calc_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    let res = ctx.op_sub(lhs, rhs)?;
+    let res = ctx.op_binop(PisOpcode::Sub, lhs, rhs)?;
 
-    update_c_f_sub(ctx, lhs, rhs);
-    update_o_f_sub(ctx, lhs, rhs, res)?;
+    update_c_f_sub(ctx, lhs, rhs)?;
+    update_o_f_sub(ctx, lhs, rhs)?;
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
@@ -374,10 +418,10 @@ fn mnm_calc_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 fn mnm_calc_dec(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
     let one = PisOp::constant(1, value.size);
 
-    let res = ctx.op_sub(value, one)?;
+    let res = ctx.op_binop(PisOpcode::Sub, value, one)?;
 
     // NOTE: the carry flag is not updated when using DEC
-    update_o_f_sub(ctx, value, one, res)?;
+    update_o_f_sub(ctx, value, one)?;
     update_parity_zero_sign_flags(ctx, res)?;
 
     Ok(res)
@@ -387,7 +431,7 @@ fn mnm_calc_dec(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
 fn mnm_calc_inc(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
     let one = PisOp::constant(1, value.size);
 
-    let res = ctx.op_add(value, one)?;
+    let res = ctx.op_binop(PisOpcode::Add, value, one)?;
 
     // NOTE: the carry flag is not updated when using INC
     update_o_f_add(ctx, value, one);
@@ -398,12 +442,12 @@ fn mnm_calc_inc(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
 
 /// the mnemonic calculation of the NOT mnemonic.
 fn mnm_calc_not(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
-    ctx.op_not(value)
+    ctx.op_unop(PisOpcode::Not, value)
 }
 
 /// the mnemonic calculation of the NEG mnemonic.
 fn mnm_calc_neg(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
-    ctx.op_neg(value)
+    ctx.op_unop(PisOpcode::Neg, value)
 }
 
 /// set the carry flag and overflow flag to zero.
@@ -414,7 +458,7 @@ fn zero_c_f_and_o_f(ctx: &mut Ctx) {
 
 /// the mnemonic calculation of the OR mnemonic.
 fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    let res = ctx.op_or(lhs, rhs)?;
+    let res = ctx.op_binop(PisOpcode::Or, lhs, rhs)?;
 
     zero_c_f_and_o_f(ctx);
     update_parity_zero_sign_flags(ctx, res)?;
@@ -424,7 +468,7 @@ fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 
 /// the mnemonic calculation of the XOR mnemonic.
 fn mnm_calc_xor(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    let res = ctx.op_xor(lhs, rhs)?;
+    let res = ctx.op_binop(PisOpcode::Xor, lhs, rhs)?;
 
     zero_c_f_and_o_f(ctx);
     update_parity_zero_sign_flags(ctx, res)?;
@@ -434,7 +478,7 @@ fn mnm_calc_xor(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
 
 /// the mnemonic calculation of the AND mnemonic.
 fn mnm_calc_and(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
-    let res = ctx.op_and(lhs, rhs)?;
+    let res = ctx.op_binop(PisOpcode::And, lhs, rhs)?;
 
     zero_c_f_and_o_f(ctx);
     update_parity_zero_sign_flags(ctx, res)?;
@@ -502,12 +546,79 @@ fn lift_lea(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
+/// information about a mnemonic which implements a binary operator with carry.
+struct BinopWithCarryMnmInfo<C, O>
+where
+    C: Fn(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+    O: Fn(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+{
+    /// the main opcode of the binary operator.
+    /// for example, for an "add with carry" operation, this will be the add opcode.
+    opcode: PisOpcode,
+
+    /// a function for calculation the carry flag of applying the binary opcode on the given 2 operands.
+    calc_c_f: C,
+
+    /// a function for calculation the overflow flag of applying the binary opcode on the given 2 operands.
+    calc_o_f: O,
+}
+
+/// a generic implementation of a mnemonic calculation of a binary operator which also uses the carry flag. can be used to
+/// implement mnemonics like `ADC` and `SBB`.
+fn mnm_calc_binop_with_carry<C, O>(
+    ctx: &mut Ctx,
+    lhs: PisOp,
+    rhs: PisOp,
+    info: BinopWithCarryMnmInfo<C, O>,
+) -> Result<PisOp>
+where
+    C: Fn(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+    O: Fn(&mut Ctx, PisOp, PisOp) -> Result<PisOp>,
+{
+    let size = lhs.size;
+    let orig_c_f = ctx.op_zext(X86_REG_FLAGS_CF, size)?;
+
+    // the result before applying the carry
+    let res_before_carry = ctx.op_binop(info.opcode, lhs, rhs)?;
+
+    // the final result after applying the carry
+    let res_after_carry = ctx.op_binop(info.opcode, res_before_carry, orig_c_f)?;
+
+    // carry flag
+    let c_f_before_carry = (info.calc_c_f)(ctx, lhs, rhs)?;
+    let c_f_after_carry = (info.calc_c_f)(ctx, res_before_carry, orig_c_f)?;
+    let final_c_f = ctx.op_binop(PisOpcode::Or, c_f_before_carry, c_f_after_carry)?;
+    ctx.op_move(X86_REG_FLAGS_CF, final_c_f);
+
+    // overflow flag
+    let o_f_before_carry = (info.calc_o_f)(ctx, lhs, rhs)?;
+    let o_f_after_carry = (info.calc_o_f)(ctx, res_before_carry, orig_c_f)?;
+    let final_o_f = ctx.op_binop(PisOpcode::Or, o_f_before_carry, o_f_after_carry)?;
+    ctx.op_move(X86_REG_FLAGS_OF, final_o_f);
+
+    Ok(res_after_carry)
+}
+
+/// the mnemonic calculation of the ADC mnemonic.
+fn mnm_calc_adc(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    mnm_calc_binop_with_carry(
+        ctx,
+        lhs,
+        rhs,
+        BinopWithCarryMnmInfo {
+            opcode: PisOpcode::Add,
+            calc_c_f: calc_c_f_add,
+            calc_o_f: calc_o_f_add,
+        },
+    )
+}
+
 fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
     match mnemonic {
         Mnemonic::Unsupported => Err(LiftErr::UnsupportedInsn),
         Mnemonic::Add => lift_binop(ctx, ops, mnm_calc_add, true),
         Mnemonic::Or => lift_binop(ctx, ops, mnm_calc_or, true),
-        Mnemonic::Adc => todo!(),
+        Mnemonic::Adc => lift_binop(ctx, ops, mnm_calc_adc, true),
         Mnemonic::Sbb => todo!(),
         Mnemonic::And => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Sub => lift_binop(ctx, ops, mnm_calc_sub, true),
