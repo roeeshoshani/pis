@@ -168,6 +168,8 @@ pub enum PisOpcode {
     /// if the value is non-zero, make it zero.
     /// if the value is zero, make it 1.
     CondNeg,
+    Not,
+    Neg,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]

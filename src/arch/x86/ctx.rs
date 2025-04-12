@@ -81,6 +81,16 @@ impl<'a> Ctx<'a> {
         self.op_unop(PisOpcode::CondNeg, x)
     }
 
+    /// performs a bitwise-not operation on the given operand into a tmp operand and returns it
+    pub fn op_not(&mut self, x: PisOp) -> Result<PisOp> {
+        self.op_unop(PisOpcode::Not, x)
+    }
+
+    /// performs a negation operation on the given operand into a tmp operand and returns it
+    pub fn op_neg(&mut self, x: PisOp) -> Result<PisOp> {
+        self.op_unop(PisOpcode::Neg, x)
+    }
+
     /// performs parity calculation on the given operand into a tmp operand and returns it
     pub fn op_parity(&mut self, x: PisOp) -> Result<PisOp> {
         self.op_unop(PisOpcode::Parity, x)

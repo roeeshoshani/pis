@@ -314,7 +314,7 @@ fn update_o_f_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) {
     ctx.emit(pis_insn!(SignedCarry! X86_REG_FLAGS_OF, lhs, rhs));
 }
 
-/// the mnemonic calculation of the ADD opcode.
+/// the mnemonic calculation of the ADD mnemonic.
 fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_add(lhs, rhs)?;
 
@@ -359,7 +359,7 @@ fn update_o_f_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp, sub_res: PisOp) -> Resu
     Ok(())
 }
 
-/// the mnemonic calculation of the SUB opcode.
+/// the mnemonic calculation of the SUB mnemonic.
 fn mnm_calc_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_sub(lhs, rhs)?;
 
@@ -370,7 +370,7 @@ fn mnm_calc_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// the mnemonic calculation of the DEC opcode.
+/// the mnemonic calculation of the DEC mnemonic.
 fn mnm_calc_dec(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
     let one = PisOp::constant(1, value.size);
 
@@ -383,7 +383,7 @@ fn mnm_calc_dec(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// the mnemonic calculation of the INC opcode.
+/// the mnemonic calculation of the INC mnemonic.
 fn mnm_calc_inc(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
     let one = PisOp::constant(1, value.size);
 
@@ -396,13 +396,23 @@ fn mnm_calc_inc(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
+/// the mnemonic calculation of the NOT mnemonic.
+fn mnm_calc_not(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
+    ctx.op_not(value)
+}
+
+/// the mnemonic calculation of the NEG mnemonic.
+fn mnm_calc_neg(ctx: &mut Ctx, value: PisOp) -> Result<PisOp> {
+    ctx.op_neg(value)
+}
+
 /// set the carry flag and overflow flag to zero.
 fn zero_c_f_and_o_f(ctx: &mut Ctx) {
     ctx.op_move_zero(X86_REG_FLAGS_CF);
     ctx.op_move_zero(X86_REG_FLAGS_OF);
 }
 
-/// the mnemonic calculation of the OR opcode.
+/// the mnemonic calculation of the OR mnemonic.
 fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_or(lhs, rhs)?;
 
@@ -412,7 +422,7 @@ fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// the mnemonic calculation of the XOR opcode.
+/// the mnemonic calculation of the XOR mnemonic.
 fn mnm_calc_xor(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_xor(lhs, rhs)?;
 
@@ -422,7 +432,7 @@ fn mnm_calc_xor(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
-/// the mnemonic calculation of the AND opcode.
+/// the mnemonic calculation of the AND mnemonic.
 fn mnm_calc_and(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_and(lhs, rhs)?;
 
@@ -535,8 +545,8 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Scas => todo!(),
         Mnemonic::Hlt => todo!(),
         Mnemonic::Cmc => todo!(),
-        Mnemonic::Not => todo!(),
-        Mnemonic::Neg => todo!(),
+        Mnemonic::Not => lift_unop(ctx, ops, mnm_calc_not),
+        Mnemonic::Neg => lift_unop(ctx, ops, mnm_calc_neg),
         Mnemonic::Div => todo!(),
         Mnemonic::Idiv => todo!(),
         Mnemonic::Clc => todo!(),
