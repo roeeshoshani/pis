@@ -323,6 +323,16 @@ fn mnm_calc_or(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
+/// the mnemonic calculation of the XOR opcode.
+fn mnm_calc_xor(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    let res = ctx.op_xor(lhs, rhs)?;
+
+    set_cf_of_to_zero(ctx);
+    update_parity_zero_sign_flags(ctx, res)?;
+
+    Ok(res)
+}
+
 /// the mnemonic calculation of the AND opcode.
 fn mnm_calc_and(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     let res = ctx.op_and(lhs, rhs)?;
@@ -360,7 +370,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Sbb => todo!(),
         Mnemonic::And => lift_binop(ctx, ops, mnm_calc_or, true),
         Mnemonic::Sub => todo!(),
-        Mnemonic::Xor => todo!(),
+        Mnemonic::Xor => lift_binop(ctx, ops, mnm_calc_xor, true),
         Mnemonic::Cmp => todo!(),
         Mnemonic::Rol => todo!(),
         Mnemonic::Ror => todo!(),
