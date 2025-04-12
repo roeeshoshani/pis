@@ -146,6 +146,7 @@ pub enum PisOpcode {
     Load,
     Store,
     Add,
+    Sub,
     And,
     MulUnsigned,
     Or,
@@ -155,6 +156,8 @@ pub enum PisOpcode {
     SignedCarry,
     Parity,
     Equals,
+    LessThanUnsigned,
+    LessThanSigned,
     ShiftRightUnsigned,
 
     /// truncate an operand into a smaller size operand by only taking its lower bits>

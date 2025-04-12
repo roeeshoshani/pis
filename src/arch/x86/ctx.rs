@@ -123,9 +123,19 @@ impl<'a> Ctx<'a> {
         self.op_binop(PisOpcode::Equals, a, b)
     }
 
+    /// checks if a is less than b when treated as signed integers, stores the result into a new tmp operand and returns it.
+    pub fn op_less_than_signed(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::LessThanSigned, a, b)
+    }
+
     /// adds the given 2 operands into a new tmp operand and returns it.
     pub fn op_add(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
         self.op_binop(PisOpcode::Add, a, b)
+    }
+
+    /// subtracts the given 2 operands into a new tmp operand and returns it.
+    pub fn op_sub(&mut self, a: PisOp, b: PisOp) -> Result<PisOp> {
+        self.op_binop(PisOpcode::Sub, a, b)
     }
 
     /// calculates `a >> b` into a new tmp operand and returns it. uses an unsigned shift.

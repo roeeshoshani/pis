@@ -307,6 +307,47 @@ fn mnm_calc_add(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
     Ok(res)
 }
 
+/// calculates the value of the overflow flag for a subtraction operation `a - b`.
+fn calc_sub_overflow_flag_value(
+    ctx: &mut Ctx,
+    lhs: PisOp,
+    rhs: PisOp,
+    sub_res: PisOp,
+) -> Result<PisOp> {
+    // calculate the sign bit of the subtraction result
+    let sub_res_msb = calc_msb(ctx, sub_res)?;
+
+    // check if lhs < rhs
+    let lhs_less_than_rhs = ctx.op_less_than_signed(lhs, rhs)?;
+
+    // the overflow can be calculated by xoring the less than condition with the sign bit.
+    //
+    // this is because, if the less than condition is 1, it means that `a < b`, in which case we
+    // expect the result to be negative, and if it is not then it is an overflow. so, if less than
+    // is 1 and sign is 0, it is an overflow.
+    //
+    // additionally, if the less than condition is 0, it means that `a >= b`, in which case we
+    // expect the result to be positive, and if it is not then it is an overflow. so, if less than
+    // is 0 and sign is 1, it is an overflow.
+    //
+    // both of those cases can be detected by just xoring these values together.
+    ctx.op_xor(sub_res_msb, lhs_less_than_rhs)
+}
+
+/// the mnemonic calculation of the SUB opcode.
+fn mnm_calc_sub(ctx: &mut Ctx, lhs: PisOp, rhs: PisOp) -> Result<PisOp> {
+    let res = ctx.op_sub(lhs, rhs)?;
+
+    ctx.emit(pis_insn!(LessThanUnsigned! X86_REG_FLAGS_CF, lhs, rhs));
+
+    let of = calc_sub_overflow_flag_value(ctx, lhs, rhs, res)?;
+    ctx.op_move(X86_REG_FLAGS_OF, of);
+
+    update_parity_zero_sign_flags(ctx, res)?;
+
+    Ok(res)
+}
+
 /// set the carry flag and overflow flag to zero.
 fn set_cf_of_to_zero(ctx: &mut Ctx) {
     ctx.op_move_zero(X86_REG_FLAGS_CF);
@@ -369,7 +410,7 @@ fn lift_mnm(ctx: &mut Ctx, mnemonic: Mnemonic, ops: &[LiftedOp]) -> Result<()> {
         Mnemonic::Adc => todo!(),
         Mnemonic::Sbb => todo!(),
         Mnemonic::And => lift_binop(ctx, ops, mnm_calc_or, true),
-        Mnemonic::Sub => todo!(),
+        Mnemonic::Sub => lift_binop(ctx, ops, mnm_calc_sub, true),
         Mnemonic::Xor => lift_binop(ctx, ops, mnm_calc_xor, true),
         Mnemonic::Cmp => todo!(),
         Mnemonic::Rol => todo!(),
