@@ -2,11 +2,11 @@ use std::num::Wrapping;
 
 use hex_literal::hex;
 use pis::{
-    LiftArgs, PisEmu, PisEndian, PisProcessor, PisProcessorX64, PisSize, W64, X86_REG_RAX,
+    LiftArgs, PisEmu, PisEndian, PisProcessor, PisProcessorX64, PisSize, Wu64, X86_REG_RAX,
     X86_REG_RBX, X86_REG_RDI,
 };
 
-const MAGICS: &[W64] = &[
+const MAGICS: &[Wu64] = &[
     Wrapping(0x74becdd72d47bf77),
     Wrapping(0x3837b6f2373b36da),
     Wrapping(0x51d3155f92922d58),
@@ -19,7 +19,7 @@ const MAGICS: &[W64] = &[
     Wrapping(0x2f772ef71989a499),
 ];
 
-fn choose_magics<const AMOUNT: usize>() -> [W64; AMOUNT] {
+fn choose_magics<const AMOUNT: usize>() -> [Wu64; AMOUNT] {
     MAGICS[..AMOUNT].try_into().unwrap()
 }
 

@@ -6,7 +6,8 @@ use crate::{PisEndian, PisInsn, PisOp, PisOpcode, PisSize, PisSpace};
 
 type Result<T> = core::result::Result<T, PisEmuErr>;
 
-pub type W64 = Wrapping<u64>;
+pub type Wu64 = Wrapping<u64>;
+pub type Wi64 = Wrapping<i64>;
 
 /// the max amount of op values
 const MAX_OP_VALS: usize = 64 * 1024;
@@ -17,20 +18,14 @@ const MAX_MEM_VALS: usize = 64 * 1024;
 /// the value of an operand
 struct OpVal {
     op: PisOp,
-    value: W64,
+    value: Wu64,
 }
 
 /// the value of a memory byte
 struct MemVal {
-    addr: W64,
+    addr: Wu64,
     value: u8,
 }
-
-/// a binary operator calculation.
-type BinopCalc = fn(lhs: W64, rhs: W64) -> W64;
-
-/// a unary operator calculation.
-type UnopCalc = fn(x: W64) -> W64;
 
 /// an emulator of pis instructions.
 pub struct PisEmu {
@@ -46,7 +41,7 @@ impl PisEmu {
             endian,
         }
     }
-    fn read_mem_byte(&self, addr: W64) -> Result<u8> {
+    fn read_mem_byte(&self, addr: Wu64) -> Result<u8> {
         let mem_val = self
             .mem_vals
             .iter()
@@ -54,7 +49,7 @@ impl PisEmu {
             .ok_or(PisEmuErr::ReadUninitMem(addr))?;
         Ok(mem_val.value)
     }
-    fn write_mem_byte(&mut self, addr: W64, value: u8) -> Result<()> {
+    fn write_mem_byte(&mut self, addr: Wu64, value: u8) -> Result<()> {
         match self
             .mem_vals
             .iter_mut()
@@ -69,7 +64,7 @@ impl PisEmu {
         }
         Ok(())
     }
-    pub fn read_mem(&self, addr: W64, read_size: PisSize) -> Result<W64> {
+    pub fn read_mem(&self, addr: Wu64, read_size: PisSize) -> Result<Wu64> {
         let size = read_size.bytes() as usize;
 
         let mut bytes = [0u8; 8];
@@ -84,7 +79,7 @@ impl PisEmu {
 
         Ok(Wrapping(value))
     }
-    pub fn write_mem(&mut self, addr: W64, read_size: PisSize, value: W64) -> Result<()> {
+    pub fn write_mem(&mut self, addr: Wu64, read_size: PisSize, value: Wu64) -> Result<()> {
         let size = read_size.bytes() as usize;
 
         let mut bytes = value.0.to_ne_bytes();
@@ -98,7 +93,7 @@ impl PisEmu {
 
         Ok(())
     }
-    pub fn read_var_op(&self, op: PisOp) -> Result<W64> {
+    pub fn read_var_op(&self, op: PisOp) -> Result<Wu64> {
         let op_val = self
             .op_vals
             .iter()
@@ -106,7 +101,7 @@ impl PisEmu {
             .ok_or(PisEmuErr::ReadUninitOp(op))?;
         Ok(op_val.value)
     }
-    pub fn read_op(&self, op: PisOp) -> Result<W64> {
+    pub fn read_op(&self, op: PisOp) -> Result<Wu64> {
         match op.space {
             PisSpace::Reg => self.read_var_op(op),
             PisSpace::Tmp => self.read_var_op(op),
@@ -114,7 +109,7 @@ impl PisEmu {
             PisSpace::Ram => unreachable!(),
         }
     }
-    pub fn write_op(&mut self, op: PisOp, value: W64) -> Result<()> {
+    pub fn write_op(&mut self, op: PisOp, value: Wu64) -> Result<()> {
         match self.op_vals.iter_mut().find(|op_val| op_val.op == op) {
             Some(op_val) => op_val.value = value,
             None => self
@@ -125,7 +120,10 @@ impl PisEmu {
         Ok(())
     }
 
-    fn run_unop(&mut self, insn: &PisInsn, calc: UnopCalc) -> Result<()> {
+    fn run_unop<F>(&mut self, insn: &PisInsn, calc: F) -> Result<()>
+    where
+        F: FnOnce(Wu64) -> Wu64,
+    {
         assert_eq!(insn.operands.len(), 2);
 
         assert_eq!(insn.operands[0].size, insn.operands[1].size);
@@ -139,7 +137,10 @@ impl PisEmu {
         Ok(())
     }
 
-    fn run_binop(&mut self, insn: PisInsn, calc: BinopCalc) -> Result<()> {
+    fn run_binop<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
+    where
+        F: FnOnce(Wu64, Wu64) -> Wu64,
+    {
         assert_eq!(insn.operands.len(), 3);
 
         assert_eq!(insn.operands[0].size, insn.operands[1].size);
@@ -153,6 +154,17 @@ impl PisEmu {
         self.write_op(insn.operands[0], result)?;
 
         Ok(())
+    }
+    fn run_binop_signed<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
+    where
+        F: FnOnce(Wi64, Wi64) -> Wi64,
+    {
+        self.run_binop(insn, |a, b| {
+            let a_signed = Wrapping(a.0 as i64);
+            let b_signed = Wrapping(b.0 as i64);
+            let res = calc(a_signed, b_signed);
+            Wrapping(res.0 as u64)
+        })
     }
     pub fn run(&mut self, insn: PisInsn) -> Result<()> {
         match insn.opcode {
@@ -172,34 +184,23 @@ impl PisEmu {
             PisOpcode::Store => todo!(),
             PisOpcode::Add => self.run_binop(insn, |a, b| a + b),
             PisOpcode::And => self.run_binop(insn, |a, b| a & b),
-            PisOpcode::MulUnsigned => self.run_binop(insn, |a, b| a * b),
             PisOpcode::Or => self.run_binop(insn, |a, b| (a | b)),
             PisOpcode::Xor => self.run_binop(insn, |a, b| a ^ b),
             PisOpcode::Zext => todo!(),
-            PisOpcode::UnsignedCarry => {
-                self.run_binop(insn, |a, b| {
-                    if a.0.checked_add(b.0).is_none() {
-                        // overflow, so we have a carry
-                        Wrapping(1)
-                    } else {
-                        // no overflow, so no carry
-                        Wrapping(0)
-                    }
-                })
-            }
-            PisOpcode::SignedCarry => {
-                self.run_binop(insn, |a, b| {
-                    let a_signed = a.0 as i64;
-                    let b_signed = b.0 as i64;
-                    if a_signed.checked_add(b_signed).is_none() {
-                        // overflow, so we have a carry
-                        Wrapping(1)
-                    } else {
-                        // no overflow, so no carry
-                        Wrapping(0)
-                    }
-                })
-            }
+            PisOpcode::UnsignedCarry => self.run_binop(insn, |a, b| {
+                if a.0.checked_add(b.0).is_none() {
+                    Wrapping(1)
+                } else {
+                    Wrapping(0)
+                }
+            }),
+            PisOpcode::SignedCarry => self.run_binop_signed(insn, |a, b| {
+                if a.0.checked_add(b.0).is_none() {
+                    Wrapping(1)
+                } else {
+                    Wrapping(0)
+                }
+            }),
             PisOpcode::Parity => {
                 assert_eq!(insn.operands.len(), 2);
                 assert_eq!(insn.operands[0].size, PisSize::B1);
@@ -249,13 +250,12 @@ impl PisEmu {
             }
             PisOpcode::Sub => self.run_binop(insn, |a, b| a - b),
             PisOpcode::LessThanUnsigned => self.run_binop(insn, |a, b| Wrapping((a < b) as u64)),
-            PisOpcode::LessThanSigned => self.run_binop(insn, |a, b| {
-                let a_signed = a.0 as i64;
-                let b_signed = b.0 as i64;
-                Wrapping((a_signed < b_signed) as u64)
-            }),
+            PisOpcode::LessThanSigned => {
+                self.run_binop_signed(insn, |a, b| Wrapping((a < b) as i64))
+            }
             PisOpcode::Not => self.run_unop(&insn, |a| !a),
             PisOpcode::Neg => self.run_unop(&insn, |a| -a),
+            PisOpcode::MulUnsigned => self.run_binop(insn, |a, b| a * b),
             PisOpcode::MulSigned => todo!(),
             PisOpcode::MulOverflowSigned => todo!(),
             PisOpcode::DivUnsigned => todo!(),
@@ -285,7 +285,7 @@ pub enum PisEmuErr {
     ReadUninitOp(PisOp),
 
     #[error("attempted to read an uninitialized memory byte at address {0:x}")]
-    ReadUninitMem(W64),
+    ReadUninitMem(Wu64),
 
     #[error("too many operand values")]
     TooManyOpVals,
