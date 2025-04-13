@@ -256,8 +256,11 @@ impl PisEmu {
             PisOpcode::Not => self.run_unop(&insn, |a| !a),
             PisOpcode::Neg => self.run_unop(&insn, |a| -a),
             PisOpcode::MulUnsigned => self.run_binop(insn, |a, b| a * b),
-            PisOpcode::MulSigned => todo!(),
-            PisOpcode::MulOverflowSigned => todo!(),
+            PisOpcode::MulSigned => self.run_binop_signed(insn, |a, b| a * b),
+            PisOpcode::MulOverflowSigned => self.run_binop_signed(insn, |a, b| {
+                let overflow = a.0.checked_mul(b.0).is_none();
+                Wrapping(overflow as i64)
+            }),
             PisOpcode::DivUnsigned => todo!(),
             PisOpcode::DivSigned => todo!(),
             PisOpcode::RemUnsigned => todo!(),
