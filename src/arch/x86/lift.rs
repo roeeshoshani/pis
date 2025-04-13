@@ -1315,52 +1315,31 @@ fn push_ip(ctx: &mut Ctx) -> Result<()> {
     push(ctx, masked_ip)
 }
 
-/// lift CALL.
+/// lift CALL
 fn lift_call(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
-    // ensure no size override prefixes for branches
-    if ctx
-        .prefixes
-        .has_legacy_prefix(LegacyPrefix::OperandSizeOverride)
-        || ctx
-            .prefixes
-            .has_legacy_prefix(LegacyPrefix::AddressSizeOverride)
-    {
-        return Err(LiftErr::UnsupportedInsn);
-    }
 
     let target = ops[0].read(ctx)?;
 
-    // push return address (IP after the CALL instruction)
     push_ip(ctx)?;
 
-    // jump to target
     ctx.emit(pis_insn!(JmpCall! target));
 
     Ok(())
 }
 
-/// lift JMP.
+/// lift JMP
 fn lift_jmp(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 1);
-    // ensure no size override prefixes for branches
-    if ctx
-        .prefixes
-        .has_legacy_prefix(LegacyPrefix::OperandSizeOverride)
-        || ctx
-            .prefixes
-            .has_legacy_prefix(LegacyPrefix::AddressSizeOverride)
-    {
-        return Err(LiftErr::UnsupportedInsn);
-    }
 
     let target = ops[0].read(ctx)?;
+
     ctx.emit(pis_insn!(Jmp! target));
 
     Ok(())
 }
 
-/// lift JCC.
+/// lift JCC
 fn lift_jcc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
 
@@ -1372,14 +1351,12 @@ fn lift_jcc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// lift RET.
+/// lift RET
 fn lift_ret(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
 
-    // pop return address from stack
     let ret_addr = pop(ctx, ctx.stack_addr_size)?;
 
-    // jump to return address
     ctx.emit(pis_insn!(JmpRet! ret_addr));
 
     Ok(())
