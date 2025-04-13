@@ -248,10 +248,14 @@ impl PisEmu {
                 self.run_unop(&insn, |a| if a.0 == 0 { Wrapping(1) } else { Wrapping(0) })
             }
             PisOpcode::Sub => self.run_binop(insn, |a, b| a - b),
-            PisOpcode::LessThanUnsigned => todo!(),
-            PisOpcode::LessThanSigned => todo!(),
-            PisOpcode::Not => todo!(),
-            PisOpcode::Neg => todo!(),
+            PisOpcode::LessThanUnsigned => self.run_binop(insn, |a, b| Wrapping((a < b) as u64)),
+            PisOpcode::LessThanSigned => self.run_binop(insn, |a, b| {
+                let a_signed = a.0 as i64;
+                let b_signed = b.0 as i64;
+                Wrapping((a_signed < b_signed) as u64)
+            }),
+            PisOpcode::Not => self.run_unop(&insn, |a| !a),
+            PisOpcode::Neg => self.run_unop(&insn, |a| -a),
             PisOpcode::MulSigned => todo!(),
             PisOpcode::MulOverflowSigned => todo!(),
             PisOpcode::DivUnsigned => todo!(),
