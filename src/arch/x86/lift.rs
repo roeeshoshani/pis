@@ -102,27 +102,35 @@ impl<'a> Ctx<'a> {
     }
 }
 
-/// calculates the mask that needs to be applied to the ip value after updating it due to a relative branch.
-fn calc_near_branch_ip_mask(ctx: &Ctx) -> u64 {
+/// the default operand size for near branches.
+///
+/// please not that the operand size is not the size of the displacement immediate. for example, for
+/// an operand size of 8, the displacement is 4 bytes.
+fn calc_near_branch_operand_size(ctx: &Ctx) -> PisSize {
     match ctx.cpumode {
         X86Cpumode::B32 => {
-            // in 32-bit mode the mask depends on the presence of the operand size override prefix.
+            // in 32-bit mode the operand size depends on the presence of the operand size override prefix.
             if ctx
                 .prefixes
                 .has_legacy_prefix(LegacyPrefix::OperandSizeOverride)
             {
-                // with operand size override, the ip is masked to 16 bits
-                u16::MAX as u64
+                // with operand size override, the operand size is 2 bytes
+                PisSize::B2
             } else {
-                // without operand size override, the ip is masked to 32 bits
-                u32::MAX as u64
+                // without operand size override, the operand size is 4 bytes
+                PisSize::B4
             }
         }
         X86Cpumode::B64 => {
-            // in 64-bit mode, the ip value is always limited to 64-bits, regardless of prefixes
-            return u64::MAX;
+            // in 64-bit mode, the operand size is always 8 bytes, regardless of prefixes
+            PisSize::B8
         }
     }
+}
+
+/// calculates the mask that needs to be applied to the ip value after updating it due to a relative branch.
+fn calc_near_branch_ip_mask(ctx: &Ctx) -> u64 {
+    calc_near_branch_operand_size(ctx).bytes() as u64
 }
 
 #[bitpiece(4)]
@@ -245,11 +253,14 @@ fn lift_op(ctx: &mut Ctx, op: &OpInfo) -> Result<LiftedOp> {
                 ext_kind: crate::ImmExtKind::Sign,
                 endian: PisEndian::Little,
             })?;
+            let ip_plus_off = ctx
+                .emitter
+                .op_binop(PisOpcode::Add, X86_REG_RIP, rel_offset)?;
             let mask = calc_near_branch_ip_mask(ctx);
             let mask_op = PisOp::constant(mask, PisSize::B8);
             Ok(LiftedOp::Value(ctx.emitter.op_binop(
                 PisOpcode::And,
-                X86_REG_RIP,
+                ip_plus_off,
                 mask_op,
             )?))
         }
@@ -1153,10 +1164,13 @@ fn do_div_ax_dx(ctx: &mut Ctx, divisor: PisOp, is_signed: bool) -> Result<()> {
         // combine DX:AX or EDX:EAX or RDX:RAX (low part first)
         let ax_zext = ctx.emitter.op_zext(ax, double_operand_size)?;
         let dx_zext = ctx.emitter.op_zext(dx, double_operand_size)?;
-        let shift_amount = PisOp::constant(operand_size.bits() as u64, double_operand_size);
+
+        let shift_amount = operand_size.bits();
+        let shift_amount_op = PisOp::constant(shift_amount as u64, double_operand_size);
         let dx_shifted = ctx
             .emitter
-            .op_binop(PisOpcode::ShiftLeft, dx_zext, shift_amount)?;
+            .op_binop(PisOpcode::ShiftLeft, dx_zext, shift_amount_op)?;
+
         let dividend = ctx.emitter.op_binop(PisOpcode::Or, ax_zext, dx_shifted)?;
 
         // extend divisor
@@ -1204,9 +1218,6 @@ fn lift_xchg(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     let op0_val = ops[0].read(ctx)?;
     let op1_val = ops[1].read(ctx)?;
 
-    // use a temporary variable (tmp operand) if one operand is memory
-    // otherwise, direct moves suffice if both are registers.
-    // the C code uses a tmp regardless, which is safer.
     let tmp = ctx.emitter.copy_value(op0_val)?;
 
     ops[0].write(op1_val, ctx);
@@ -1215,11 +1226,10 @@ fn lift_xchg(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// lift MOVSXD (needs 64-bit mode check).
+/// lift MOVSXD.
 fn lift_movsxd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
-    // MOVSD behaves like MOVSXD only in 64-bit mode.
-    // in 32-bit mode, 0x63 is ARPL.
+
     if ctx.cpumode != X86Cpumode::B64 {
         return Err(LiftErr::UnsupportedInsn);
     }
@@ -1227,17 +1237,17 @@ fn lift_movsxd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     let dst_size = ops[0].size();
     let src_size = ops[1].size();
 
-    // MOVSD acts as MOVSX only if dst > src. Otherwise it's a NOP/MOV.
+    assert!(dst_size >= src_size, "movsxd with invalid operand sizes");
+
     if dst_size > src_size {
         // perform sign extension
         let src_val = ops[1].read(ctx)?;
         let sext_val = ctx.emitter.op_sext(src_val, dst_size)?;
         ops[0].write(sext_val, ctx);
-    } else if dst_size == src_size {
-        // if sizes are equal, it acts like a MOV
+    } else {
+        // movsxd may act as a move if its operands are of the same size
         lift_mov(ctx, ops)?;
     }
-    // if dst_size < src_size, it's technically invalid encoding for MOVSXD, handle as needed (e.g., error or NOP)
 
     Ok(())
 }
@@ -1245,45 +1255,45 @@ fn lift_movsxd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 /// lift MOVSX.
 fn lift_movsx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
+
     let dst_size = ops[0].size();
     let src_size = ops[1].size();
-    assert!(
-        dst_size > src_size,
-        "Destination size must be larger for MOVSX"
-    );
+
+    assert!(dst_size > src_size, "movsx with invalid operand sizes");
 
     let src_val = ops[1].read(ctx)?;
     let sext_val = ctx.emitter.op_sext(src_val, dst_size)?;
     ops[0].write(sext_val, ctx);
+
     Ok(())
 }
 
 /// lift MOVZX.
 fn lift_movzx(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
+
     let dst_size = ops[0].size();
     let src_size = ops[1].size();
-    assert!(
-        dst_size > src_size,
-        "Destination size must be larger for MOVZX"
-    );
+
+    assert!(dst_size > src_size, "mozsx with invalid operand sizes");
 
     let src_val = ops[1].read(ctx)?;
-    let zext_val = ctx.emitter.op_zext(src_val, dst_size)?;
-    ops[0].write(zext_val, ctx);
+    let sext_val = ctx.emitter.op_zext(src_val, dst_size)?;
+    ops[0].write(sext_val, ctx);
+
     Ok(())
 }
 
 /// lift CWD/CDQ/CQO.
 fn lift_cwd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert_eq!(ops.len(), 2);
+
     let dst_op = &ops[0];
     let src_op = &ops[1];
 
     let src_val = src_op.read(ctx)?;
     let dst_size = dst_op.size();
 
-    // sign extend src_val to dst_size
     let sext_val = ctx.emitter.op_sext(src_val, dst_size)?;
 
     dst_op.write(sext_val, ctx);
@@ -1291,18 +1301,18 @@ fn lift_cwd(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     Ok(())
 }
 
-/// push IP onto the stack.
+/// push the instruction pointer onto the stack.
 fn push_ip(ctx: &mut Ctx) -> Result<()> {
-    // RIP value points *after* the current instruction.
-    let cur_insn_end_addr = ctx.args.cur_code_addr();
-    let ip_mask = calc_near_branch_ip_mask(ctx);
-    let push_value_raw = cur_insn_end_addr & ip_mask;
+    // determine the size to push
+    let push_size = calc_near_branch_operand_size(ctx);
 
-    // determine the size to push (stack address size)
-    let push_size = ctx.stack_addr_size;
-    let push_value_op = PisOp::constant(push_value_raw, push_size);
+    let ip = PisOp::reg(X86_REG_RIP.offset.0, push_size);
 
-    push(ctx, push_value_op)
+    let mask = calc_near_branch_ip_mask(ctx);
+    let mask_op = PisOp::constant(mask, push_size);
+    let masked_ip = ctx.emitter.op_binop(PisOpcode::And, ip, mask_op)?;
+
+    push(ctx, masked_ip)
 }
 
 /// lift CALL.
