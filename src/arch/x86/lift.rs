@@ -1599,7 +1599,6 @@ fn lift_stc(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 /// lift CLI.
 fn lift_cli(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
-    // requires ring 0. In PIS, just clear the flag.
     ctx.emitter.op_move_zero(X86_REG_FLAGS_IF);
     Ok(())
 }
@@ -1607,7 +1606,6 @@ fn lift_cli(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
 /// lift STI.
 fn lift_sti(ctx: &mut Ctx, ops: &[LiftedOp]) -> Result<()> {
     assert!(ops.is_empty());
-    // requires ring 0. In PIS, just set the flag.
     ctx.emitter
         .op_move(X86_REG_FLAGS_IF, PisOp::constant(1, PisSize::B1));
     Ok(())

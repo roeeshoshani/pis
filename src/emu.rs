@@ -29,6 +29,9 @@ struct MemVal {
 /// a binary operator calculation.
 type BinopCalc = fn(lhs: W64, rhs: W64) -> W64;
 
+/// a unary operator calculation.
+type UnopCalc = fn(x: W64) -> W64;
+
 /// an emulator of pis instructions.
 pub struct PisEmu {
     op_vals: LimitedVec<OpVal, MAX_OP_VALS>,
@@ -121,8 +124,26 @@ impl PisEmu {
         }
         Ok(())
     }
+
+    fn run_unop(&mut self, insn: &PisInsn, calc: UnopCalc) -> Result<()> {
+        assert_eq!(insn.operands.len(), 2);
+
+        assert_eq!(insn.operands[0].size, insn.operands[1].size);
+
+        let src = self.read_op(insn.operands[1])?;
+
+        let result = calc(src);
+
+        self.write_op(insn.operands[0], result)?;
+
+        Ok(())
+    }
+
     fn run_binop(&mut self, insn: PisInsn, calc: BinopCalc) -> Result<()> {
         assert_eq!(insn.operands.len(), 3);
+
+        assert_eq!(insn.operands[0].size, insn.operands[1].size);
+        assert_eq!(insn.operands[1].size, insn.operands[2].size);
 
         let lhs = self.read_op(insn.operands[1])?;
         let rhs = self.read_op(insn.operands[2])?;
@@ -223,8 +244,10 @@ impl PisEmu {
 
                 Ok(())
             }
-            PisOpcode::CondNeg => todo!(),
-            PisOpcode::Sub => todo!(),
+            PisOpcode::CondNeg => {
+                self.run_unop(&insn, |a| if a.0 == 0 { Wrapping(1) } else { Wrapping(0) })
+            }
+            PisOpcode::Sub => self.run_binop(insn, |a, b| a - b),
             PisOpcode::LessThanUnsigned => todo!(),
             PisOpcode::LessThanSigned => todo!(),
             PisOpcode::Not => todo!(),
