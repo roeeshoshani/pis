@@ -371,7 +371,12 @@ impl PisEmu {
             PisOpcode::And => self.run_binop(insn, |a, b| a & b),
             PisOpcode::Or => self.run_binop(insn, |a, b| (a | b)),
             PisOpcode::Xor => self.run_binop(insn, |a, b| a ^ b),
-            PisOpcode::Zext => todo!(),
+            PisOpcode::Zext => {
+                assert_eq!(insn.operands.len(), 2);
+                let value = self.read_op(insn.operands[1])?;
+                self.write_op(insn.operands[0], Wrapping(value.0 as u64))?;
+                Ok(())
+            }
             PisOpcode::UnsignedCarry => self.run_binop(insn, |a, b| {
                 if a.0.checked_add(b.0).is_none() {
                     Wrapping(1)
