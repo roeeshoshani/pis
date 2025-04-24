@@ -470,7 +470,7 @@ impl PisEmu {
                 Ok(())
             }
             PisOpcode::Halt => Err(PisEmuErr::Halted),
-            PisOpcode::ShiftRightSigned => todo!(),
+            PisOpcode::ShiftRightSigned => self.run_binop_signed_fallible(insn, |a, b| {if b < 0 { return Err(PisEmuErr)Wrapping(a.0 >> b.0)}),
             PisOpcode::ShiftLeft => todo!(),
             PisOpcode::Div16Unsigned => todo!(),
             PisOpcode::Div16Signed => todo!(),
