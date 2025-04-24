@@ -81,7 +81,7 @@ pub enum PisSpace {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Primitive)]
 pub struct PisOff(pub u64);
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct PisAddr {
     pub space: PisSpace,
     pub offset: PisOff,

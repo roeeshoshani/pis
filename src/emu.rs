@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use thiserror_no_std::Error;
 
-use crate::{PisEndian, PisInsn, PisOp, PisOpcode, PisSize, PisSpace};
+use crate::{PisAddr, PisEndian, PisInsn, PisOp, PisOpcode, PisSize, PisSpace};
 
 type Result<T> = core::result::Result<T, PisEmuErr>;
 
@@ -15,16 +15,78 @@ const MAX_OP_VALS: usize = 64 * 1024;
 /// the max amount of mem values
 const MAX_MEM_VALS: usize = 64 * 1024;
 
-/// the value of an operand
+trait ByteStorageEntry {
+    type Addr: ByteStorageAddr;
+    fn addr(&self) -> Self::Addr;
+    fn val(&self) -> u8;
+    fn set_val(&self, new_val: u8);
+    fn make(addr: Self::Addr, val: u8) -> Self;
+}
+
+trait ByteStorageAddr: Eq {
+    fn uninit_err(self) -> PisEmuErr;
+    fn offset(&self, offset: u64) -> Self;
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct OpValAddr(PisAddr);
+impl ByteStorageAddr for OpValAddr {
+    fn uninit_err(self) -> PisEmuErr {
+        PisEmuErr::ReadUninitOp(self.0)
+    }
+
+    fn offset(&self, offset: u64) -> Self {
+        Self(PisAddr {
+            space: self.0.space,
+            offset: self.0.offset + offset,
+        })
+    }
+}
+
+/// the value of an operand byte
 struct OpVal {
-    op: PisOp,
-    value: Wu64,
+    addr: OpValAddr,
+    val: u8,
+}
+impl ByteStorageEntry for OpVal {
+    type Addr = OpValAddr;
+
+    fn addr(&self) -> Self::Addr {
+        self.addr
+    }
+
+    fn val(&self) -> u8 {
+        self.val
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct MemValAddr(Wu64);
+impl ByteStorageAddr for MemValAddr {
+    fn uninit_err(self) -> PisEmuErr {
+        PisEmuErr::ReadUninitMem(self.0)
+    }
+
+    fn offset(&self, offset: u64) -> Self {
+        Self(self.0 + Wrapping(offset))
+    }
 }
 
 /// the value of a memory byte
 struct MemVal {
-    addr: Wu64,
-    value: u8,
+    addr: MemValAddr,
+    val: u8,
+}
+impl ByteStorageEntry for MemVal {
+    type Addr = MemValAddr;
+
+    fn addr(&self) -> Self::Addr {
+        self.addr
+    }
+
+    fn val(&self) -> u8 {
+        self.val
+    }
 }
 
 /// a safe division operation which returns an error if the divisor is zero.
@@ -74,6 +136,62 @@ fn sign_extend_64(val: u64, size: PisSize) -> i64 {
     }
 }
 
+pub fn read_multi_byte<E: ByteStorageEntry>(
+    storage: &[E],
+    endian: PisEndian,
+    addr: E::Addr,
+    read_size: PisSize,
+) -> Result<Wu64> {
+    let size = read_size.bytes() as usize;
+
+    let mut bytes = [0u8; 8];
+    for i in 0..size {
+        let cur_addr = addr.offset(i as u64);
+        let entry = storage
+            .iter()
+            .find(|entry| entry.addr() == cur_addr)
+            .ok_or(cur_addr.uninit_err())?;
+        bytes[i] = entry.val();
+    }
+
+    // convert bytes back to native endian
+    endian.reverse_if_not_native(&mut bytes[..size]);
+
+    let value = u64::from_ne_bytes(bytes);
+
+    Ok(Wrapping(value))
+}
+
+pub fn write_multi_byte<const MAX_SIZE: usize, E: ByteStorageEntry>(
+    storage: &mut LimitedVec<E, MAX_SIZE>,
+    endian: PisEndian,
+    addr: E::Addr,
+    write_size: PisSize,
+    value: Wu64,
+) -> Result<Wu64> {
+    let size = write_size.bytes() as usize;
+
+    let mut bytes = value.0.to_ne_bytes();
+
+    // convert from native endian to the target endian
+    endian.reverse_if_not_native(&mut bytes[..size]);
+
+    for i in 0..size {
+        let cur_addr = addr.offset(i as u64);
+        let cur_byte_val = bytes[i];
+        match storage.iter().find(|entry| entry.addr() == cur_addr) {
+            Some(entry) => entry.set_val(cur_byte_val),
+            None => {
+                storage
+                    .push(E::make(addr, cur_byte_val))
+                    .map_err(|_| PisEmuErr::TooManyMemVals)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// an emulator of pis instructions.
 pub struct PisEmu {
     op_vals: LimitedVec<OpVal, MAX_OP_VALS>,
@@ -88,46 +206,26 @@ impl PisEmu {
             endian,
         }
     }
-    fn read_mem_byte(&self, addr: Wu64) -> Result<u8> {
-        let mem_val = self
-            .mem_vals
-            .iter()
-            .find(|mem_val| mem_val.addr == addr)
-            .ok_or(PisEmuErr::ReadUninitMem(addr))?;
-        Ok(mem_val.value)
-    }
     fn write_mem_byte(&mut self, addr: Wu64, value: u8) -> Result<()> {
         match self
             .mem_vals
             .iter_mut()
             .find(|mem_val| mem_val.addr == addr)
         {
-            Some(mem_val) => mem_val.value = value,
+            Some(mem_val) => mem_val.val = value,
             None => {
                 self.mem_vals
-                    .push(MemVal { addr, value })
+                    .push(MemVal { addr, val: value })
                     .map_err(|_| PisEmuErr::TooManyMemVals)?;
             }
         }
         Ok(())
     }
     pub fn read_mem(&self, addr: Wu64, read_size: PisSize) -> Result<Wu64> {
-        let size = read_size.bytes() as usize;
-
-        let mut bytes = [0u8; 8];
-        for i in 0..size {
-            bytes[i] = self.read_mem_byte(addr + Wrapping(i as u64))?;
-        }
-
-        // convert bytes back to native endian
-        self.endian.reverse_if_not_native(&mut bytes[..size]);
-
-        let value = u64::from_ne_bytes(bytes);
-
-        Ok(Wrapping(value))
+        read_multi_byte(&self.mem_vals.0, self.endian, addr, read_size)
     }
-    pub fn write_mem(&mut self, addr: Wu64, read_size: PisSize, value: Wu64) -> Result<()> {
-        let size = read_size.bytes() as usize;
+    pub fn write_mem(&mut self, addr: Wu64, write_size: PisSize, value: Wu64) -> Result<()> {
+        let size = write_size.bytes() as usize;
 
         let mut bytes = value.0.to_ne_bytes();
 
@@ -146,7 +244,7 @@ impl PisEmu {
             .iter()
             .find(|op_val| op_val.op == op)
             .ok_or(PisEmuErr::ReadUninitOp(op))?;
-        Ok(op_val.value)
+        Ok(op_val.val)
     }
     /// reads the value of the given operand.
     pub fn read_op(&self, op: PisOp) -> Result<Wu64> {
@@ -168,10 +266,10 @@ impl PisEmu {
         let value = value & Wrapping(op.size.mask());
 
         match self.op_vals.iter_mut().find(|op_val| op_val.op == op) {
-            Some(op_val) => op_val.value = value,
+            Some(op_val) => op_val.val = value,
             None => self
                 .op_vals
-                .push(OpVal { op, value })
+                .push(OpVal { op, val: value })
                 .map_err(|_| PisEmuErr::TooManyOpVals)?,
         }
         Ok(())
@@ -369,8 +467,8 @@ impl PisEmu {
 
 #[derive(Debug, Error)]
 pub enum PisEmuErr {
-    #[error("attempted to read an uninitialized operand {0:?}")]
-    ReadUninitOp(PisOp),
+    #[error("attempted to read an uninitialized operand byte at address {0:?}")]
+    ReadUninitOp(PisAddr),
 
     #[error("attempted to read an uninitialized memory byte at address {0:x}")]
     ReadUninitMem(Wu64),
