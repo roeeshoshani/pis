@@ -25,10 +25,11 @@ fn choose_magics<const AMOUNT: usize>() -> [Wu64; AMOUNT] {
 
 fn run_code(emu: &mut PisEmu, code: &[u8], machine_code_addr: u64) {
     let mut cur = code;
+    let mut cur_addr = machine_code_addr;
     while cur.len() > 0 {
         let res = PisProcessorX64::lift_one(LiftArgs {
-            code,
-            machine_code_addr,
+            code: cur,
+            machine_code_addr: cur_addr,
         })
         .unwrap();
 
@@ -36,6 +37,7 @@ fn run_code(emu: &mut PisEmu, code: &[u8], machine_code_addr: u64) {
             emu.run(insn).unwrap();
         }
 
+        cur_addr += res.machine_insn_len.bytes as u64;
         cur = &cur[res.machine_insn_len.bytes..];
     }
 }
@@ -53,9 +55,6 @@ fn lift_add() {
     let [rax, rbx, rdi, mem_value] = choose_magics();
     let addr = rbx + rdi * Wrapping(4) - Wrapping(7);
     let result = rax + mem_value;
-    println!("rax = {rax}");
-    println!("mem_value = {mem_value}");
-    println!("result = {result}");
 
     let mut emu = mk_emu();
     emu.write_op(X86_REG_RAX, rax).unwrap();
@@ -66,4 +65,20 @@ fn lift_add() {
     run_code(&mut emu, &code, 0);
 
     assert_eq!(emu.read_op(X86_REG_RAX).unwrap(), result);
+}
+
+#[test]
+fn lift_sub_regs() {
+    // mov rax, 0x1234567890abcdef
+    // mov ah, 0x00
+    let code = hex!("48 B8 EF CD AB 90 78 56 34 12 B4 00");
+
+    let mut emu = mk_emu();
+
+    run_code(&mut emu, &code, 0);
+
+    assert_eq!(
+        emu.read_op(X86_REG_RAX).unwrap(),
+        Wrapping(0x1234567890ab00ef)
+    );
 }
