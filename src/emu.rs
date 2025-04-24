@@ -253,12 +253,17 @@ impl PisEmu {
     }
     /// reads the value of the given operand.
     pub fn read_op(&self, op: PisOp) -> Result<Wu64> {
-        match op.space {
-            PisSpace::Reg => self.read_var_op(op),
-            PisSpace::Tmp => self.read_var_op(op),
-            PisSpace::Const => Ok(Wrapping(op.offset.0)),
+        let value = match op.space {
+            PisSpace::Reg => self.read_var_op(op)?,
+            PisSpace::Tmp => self.read_var_op(op)?,
+            PisSpace::Const => Wrapping(op.offset.0),
             PisSpace::Ram => unreachable!(),
-        }
+        };
+
+        // make sure that the value does not have bits outside of its range turned on
+        assert!((value.0 & !op.size.mask()) == 0);
+
+        Ok(value)
     }
     /// reads the value of the given operand as a signed value.
     pub fn read_op_signed(&self, op: PisOp) -> Result<Wi64> {
@@ -355,7 +360,13 @@ impl PisEmu {
                 self.write_op(insn.operands[0], value)?;
                 Ok(())
             }
-            PisOpcode::Store => todo!(),
+            PisOpcode::Store => {
+                assert_eq!(insn.operands.len(), 2,);
+                let addr = self.read_op(insn.operands[0])?;
+                let value = self.read_op(insn.operands[1])?;
+                self.write_mem(addr, insn.operands[1].size, value)?;
+                Ok(())
+            }
             PisOpcode::Add => self.run_binop(insn, |a, b| a + b),
             PisOpcode::And => self.run_binop(insn, |a, b| a & b),
             PisOpcode::Or => self.run_binop(insn, |a, b| (a | b)),
