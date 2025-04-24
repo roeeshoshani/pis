@@ -204,7 +204,7 @@ fn write_multi_byte<const MAX_SIZE: usize, E: ByteStorageEntry>(
             Some(entry) => entry.set_val(cur_byte_val),
             None => {
                 storage
-                    .push(E::make(addr, cur_byte_val))
+                    .push(E::make(cur_addr, cur_byte_val))
                     .map_err(|_| PisEmuErr::TooManyMemVals)?;
             }
         }
