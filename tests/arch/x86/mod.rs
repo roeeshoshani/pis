@@ -3,7 +3,7 @@ use std::num::Wrapping;
 use hex_literal::hex;
 use pis::{
     LiftArgs, PisEmu, PisEndian, PisProcessor, PisProcessorX64, PisSize, Wu64, X86_REG_AH,
-    X86_REG_AL, X86_REG_RAX, X86_REG_RBX, X86_REG_RDI,
+    X86_REG_AL, X86_REG_BL, X86_REG_BX, X86_REG_RAX, X86_REG_RBX, X86_REG_RDI,
 };
 
 const MAGICS: &[Wu64] = &[
@@ -103,4 +103,59 @@ fn lift_sub_regs() {
     );
     assert_eq!(emu.read_op(X86_REG_AL).unwrap(), Wrapping(0x92));
     assert_eq!(emu.read_op(X86_REG_AH).unwrap(), Wrapping(0x47));
+}
+
+#[test]
+fn lift_sub_mem() {
+    let mut emu = mk_emu();
+
+    // setup the mem addr in rax
+    let [addr] = choose_magics();
+    emu.write_op(X86_REG_RAX, addr).unwrap();
+
+    // mov [rax], rbx
+    let store_8 = hex!("48 89 18");
+    emu.write_op(X86_REG_RBX, Wrapping(0x1234567890abcdef))
+        .unwrap();
+    run_code(&mut emu, &store_8, 0);
+
+    assert_eq!(
+        emu.read_mem(addr, PisSize::B8).unwrap(),
+        Wrapping(0x1234567890abcdef)
+    );
+    assert_eq!(emu.read_mem(addr, PisSize::B1).unwrap(), Wrapping(0xef));
+    assert_eq!(
+        emu.read_mem(addr + Wrapping(1), PisSize::B1).unwrap(),
+        Wrapping(0xcd)
+    );
+
+    // mov [rax + 1], bl
+    let store_1 = hex!("88 58 01");
+    emu.write_op(X86_REG_BL, Wrapping(0)).unwrap();
+    run_code(&mut emu, &store_1, 0);
+
+    assert_eq!(
+        emu.read_mem(addr, PisSize::B8).unwrap(),
+        Wrapping(0x1234567890ab00ef)
+    );
+    assert_eq!(emu.read_mem(addr, PisSize::B1).unwrap(), Wrapping(0xef));
+    assert_eq!(
+        emu.read_mem(addr + Wrapping(1), PisSize::B1).unwrap(),
+        Wrapping(0x00)
+    );
+
+    // mov [rax], bx
+    let store_2 = hex!("66 89 18");
+    emu.write_op(X86_REG_BX, Wrapping(0x4792)).unwrap();
+    run_code(&mut emu, &store_2, 0);
+
+    assert_eq!(
+        emu.read_mem(addr, PisSize::B8).unwrap(),
+        Wrapping(0x1234567890ab4792)
+    );
+    assert_eq!(emu.read_mem(addr, PisSize::B1).unwrap(), Wrapping(0x92));
+    assert_eq!(
+        emu.read_mem(addr + Wrapping(1), PisSize::B1).unwrap(),
+        Wrapping(0x47)
+    );
 }
