@@ -63,6 +63,17 @@ fn safe_rem_signed(a: Wi64, b: Wi64) -> Result<Wi64> {
     }
 }
 
+/// sign extends the given value from the given original size to 64 bits.
+fn sign_extend_64(val: u64, size: PisSize) -> i64 {
+    match size {
+        PisSize::B1 => val as u8 as i8 as i64,
+        PisSize::B2 => val as u16 as i16 as i64,
+        PisSize::B4 => val as u32 as i32 as i64,
+        PisSize::B8 => val as i64,
+        _ => unreachable!(),
+    }
+}
+
 /// an emulator of pis instructions.
 pub struct PisEmu {
     op_vals: LimitedVec<OpVal, MAX_OP_VALS>,
@@ -137,6 +148,7 @@ impl PisEmu {
             .ok_or(PisEmuErr::ReadUninitOp(op))?;
         Ok(op_val.value)
     }
+    /// reads the value of the given operand.
     pub fn read_op(&self, op: PisOp) -> Result<Wu64> {
         match op.space {
             PisSpace::Reg => self.read_var_op(op),
@@ -145,7 +157,16 @@ impl PisEmu {
             PisSpace::Ram => unreachable!(),
         }
     }
+    /// reads the value of the given operand as a signed value.
+    pub fn read_op_signed(&self, op: PisOp) -> Result<Wi64> {
+        let val = self.read_op(op)?.0;
+        Ok(Wrapping(sign_extend_64(val, op.size)))
+    }
+    /// writes the given value to the given operand.
     pub fn write_op(&mut self, op: PisOp, value: Wu64) -> Result<()> {
+        // mask the value before writing so that we don't write a value larger than possible
+        let value = value & Wrapping(op.size.mask());
+
         match self.op_vals.iter_mut().find(|op_val| op_val.op == op) {
             Some(op_val) => op_val.value = value,
             None => self
@@ -201,12 +222,19 @@ impl PisEmu {
     where
         F: FnOnce(Wi64, Wi64) -> Result<Wi64>,
     {
-        self.run_binop_fallible(insn, |a, b| {
-            let a_signed = Wrapping(a.0 as i64);
-            let b_signed = Wrapping(b.0 as i64);
-            let res = calc(a_signed, b_signed)?;
-            Ok(Wrapping(res.0 as u64))
-        })
+        assert_eq!(insn.operands.len(), 3);
+
+        assert_eq!(insn.operands[0].size, insn.operands[1].size);
+        assert_eq!(insn.operands[1].size, insn.operands[2].size);
+
+        let lhs = self.read_op_signed(insn.operands[1])?;
+        let rhs = self.read_op_signed(insn.operands[2])?;
+
+        let result = calc(lhs, rhs)?;
+
+        self.write_op(insn.operands[0], Wrapping(result.0 as u64))?;
+
+        Ok(())
     }
     fn run_binop_signed<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
     where
@@ -321,7 +349,12 @@ impl PisEmu {
             PisOpcode::Jmp => todo!(),
             PisOpcode::JmpCond => todo!(),
             PisOpcode::JmpRet => todo!(),
-            PisOpcode::Sext => todo!(),
+            PisOpcode::Sext => {
+                assert_eq!(insn.operands.len(), 2);
+                let value = self.read_op_signed(insn.operands[1])?;
+                self.write_op(insn.operands[0], Wrapping(value.0 as u64))?;
+                Ok(())
+            }
             PisOpcode::Halt => todo!(),
             PisOpcode::ShiftRightSigned => todo!(),
             PisOpcode::ShiftLeft => todo!(),
