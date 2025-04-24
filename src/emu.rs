@@ -469,7 +469,7 @@ impl PisEmu {
                 self.write_op(insn.operands[0], Wrapping(value.0 as u64))?;
                 Ok(())
             }
-            PisOpcode::Halt => todo!(),
+            PisOpcode::Halt => Err(PisEmuErr::Halted),
             PisOpcode::ShiftRightSigned => todo!(),
             PisOpcode::ShiftLeft => todo!(),
             PisOpcode::Div16Unsigned => todo!(),
@@ -497,6 +497,9 @@ pub enum PisEmuErr {
 
     #[error("division by zero")]
     DivisionByZero,
+
+    #[error("the emulated program halted")]
+    Halted,
 }
 
 pub struct LimitedVec<T, const MAX_SIZE: usize>(Vec<T>);
