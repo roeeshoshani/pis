@@ -1,3 +1,4 @@
+use core::net;
 use std::num::Wrapping;
 
 use thiserror_no_std::Error;
@@ -19,11 +20,11 @@ trait ByteStorageEntry {
     type Addr: ByteStorageAddr;
     fn addr(&self) -> Self::Addr;
     fn val(&self) -> u8;
-    fn set_val(&self, new_val: u8);
+    fn set_val(&mut self, new_val: u8);
     fn make(addr: Self::Addr, val: u8) -> Self;
 }
 
-trait ByteStorageAddr: Eq {
+trait ByteStorageAddr: Eq + Copy {
     fn uninit_err(self) -> PisEmuErr;
     fn offset(&self, offset: u64) -> Self;
 }
@@ -58,6 +59,14 @@ impl ByteStorageEntry for OpVal {
     fn val(&self) -> u8 {
         self.val
     }
+
+    fn set_val(&mut self, new_val: u8) {
+        self.val = new_val;
+    }
+
+    fn make(addr: Self::Addr, val: u8) -> Self {
+        Self { addr, val }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -86,6 +95,14 @@ impl ByteStorageEntry for MemVal {
 
     fn val(&self) -> u8 {
         self.val
+    }
+
+    fn set_val(&mut self, new_val: u8) {
+        self.val = new_val;
+    }
+
+    fn make(addr: Self::Addr, val: u8) -> Self {
+        Self { addr, val }
     }
 }
 
@@ -136,7 +153,7 @@ fn sign_extend_64(val: u64, size: PisSize) -> i64 {
     }
 }
 
-pub fn read_multi_byte<E: ByteStorageEntry>(
+fn read_multi_byte<E: ByteStorageEntry>(
     storage: &[E],
     endian: PisEndian,
     addr: E::Addr,
@@ -154,32 +171,36 @@ pub fn read_multi_byte<E: ByteStorageEntry>(
         bytes[i] = entry.val();
     }
 
-    // convert bytes back to native endian
-    endian.reverse_if_not_native(&mut bytes[..size]);
+    // convert to little endian
+    if endian != PisEndian::Little {
+        bytes[..size].reverse();
+    }
 
-    let value = u64::from_ne_bytes(bytes);
+    let value = u64::from_le_bytes(bytes);
 
     Ok(Wrapping(value))
 }
 
-pub fn write_multi_byte<const MAX_SIZE: usize, E: ByteStorageEntry>(
+fn write_multi_byte<const MAX_SIZE: usize, E: ByteStorageEntry>(
     storage: &mut LimitedVec<E, MAX_SIZE>,
     endian: PisEndian,
     addr: E::Addr,
     write_size: PisSize,
     value: Wu64,
-) -> Result<Wu64> {
+) -> Result<()> {
     let size = write_size.bytes() as usize;
 
-    let mut bytes = value.0.to_ne_bytes();
+    let mut bytes = value.0.to_le_bytes();
 
-    // convert from native endian to the target endian
-    endian.reverse_if_not_native(&mut bytes[..size]);
+    // convert from little endian to the target endian
+    if endian != PisEndian::Little {
+        bytes[..size].reverse();
+    }
 
     for i in 0..size {
         let cur_addr = addr.offset(i as u64);
         let cur_byte_val = bytes[i];
-        match storage.iter().find(|entry| entry.addr() == cur_addr) {
+        match storage.iter_mut().find(|entry| entry.addr() == cur_addr) {
             Some(entry) => entry.set_val(cur_byte_val),
             None => {
                 storage
@@ -206,45 +227,29 @@ impl PisEmu {
             endian,
         }
     }
-    fn write_mem_byte(&mut self, addr: Wu64, value: u8) -> Result<()> {
-        match self
-            .mem_vals
-            .iter_mut()
-            .find(|mem_val| mem_val.addr == addr)
-        {
-            Some(mem_val) => mem_val.val = value,
-            None => {
-                self.mem_vals
-                    .push(MemVal { addr, val: value })
-                    .map_err(|_| PisEmuErr::TooManyMemVals)?;
-            }
-        }
-        Ok(())
-    }
     pub fn read_mem(&self, addr: Wu64, read_size: PisSize) -> Result<Wu64> {
-        read_multi_byte(&self.mem_vals.0, self.endian, addr, read_size)
+        read_multi_byte(&self.mem_vals.0, self.endian, MemValAddr(addr), read_size)
     }
     pub fn write_mem(&mut self, addr: Wu64, write_size: PisSize, value: Wu64) -> Result<()> {
-        let size = write_size.bytes() as usize;
-
-        let mut bytes = value.0.to_ne_bytes();
-
-        // convert from native endian to the target endian
-        self.endian.reverse_if_not_native(&mut bytes[..size]);
-
-        for i in 0..size {
-            self.write_mem_byte(addr + Wrapping(i as u64), bytes[i])?;
-        }
-
-        Ok(())
+        write_multi_byte(
+            &mut self.mem_vals,
+            self.endian,
+            MemValAddr(addr),
+            write_size,
+            value,
+        )
     }
     pub fn read_var_op(&self, op: PisOp) -> Result<Wu64> {
-        let op_val = self
-            .op_vals
-            .iter()
-            .find(|op_val| op_val.op == op)
-            .ok_or(PisEmuErr::ReadUninitOp(op))?;
-        Ok(op_val.val)
+        read_multi_byte(&self.op_vals.0, self.endian, OpValAddr(op.addr()), op.size)
+    }
+    pub fn write_var_op(&mut self, op: PisOp, value: Wu64) -> Result<()> {
+        write_multi_byte(
+            &mut self.op_vals,
+            self.endian,
+            OpValAddr(op.addr()),
+            op.size,
+            value,
+        )
     }
     /// reads the value of the given operand.
     pub fn read_op(&self, op: PisOp) -> Result<Wu64> {
@@ -262,17 +267,12 @@ impl PisEmu {
     }
     /// writes the given value to the given operand.
     pub fn write_op(&mut self, op: PisOp, value: Wu64) -> Result<()> {
-        // mask the value before writing so that we don't write a value larger than possible
-        let value = value & Wrapping(op.size.mask());
-
-        match self.op_vals.iter_mut().find(|op_val| op_val.op == op) {
-            Some(op_val) => op_val.val = value,
-            None => self
-                .op_vals
-                .push(OpVal { op, val: value })
-                .map_err(|_| PisEmuErr::TooManyOpVals)?,
+        match op.space {
+            PisSpace::Reg => self.write_var_op(op, value),
+            PisSpace::Tmp => self.write_var_op(op, value),
+            PisSpace::Const => unreachable!(),
+            PisSpace::Ram => unreachable!(),
         }
-        Ok(())
     }
 
     fn run_unop<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
