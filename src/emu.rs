@@ -27,6 +27,15 @@ struct MemVal {
     value: u8,
 }
 
+/// a safe division operation which returns an error if the divisor is zero.
+fn safe_div(a: Wu64, b: Wu64) -> Result<Wu64> {
+    if b.0 == 0 {
+        Err(PisEmuErr::DivisionByZero)
+    } else {
+        Ok(a / b)
+    }
+}
+
 /// an emulator of pis instructions.
 pub struct PisEmu {
     op_vals: LimitedVec<OpVal, MAX_OP_VALS>,
@@ -120,7 +129,7 @@ impl PisEmu {
         Ok(())
     }
 
-    fn run_unop<F>(&mut self, insn: &PisInsn, calc: F) -> Result<()>
+    fn run_unop<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
     where
         F: FnOnce(Wu64) -> Wu64,
     {
@@ -137,9 +146,9 @@ impl PisEmu {
         Ok(())
     }
 
-    fn run_binop<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
+    fn run_binop_fallible<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
     where
-        F: FnOnce(Wu64, Wu64) -> Wu64,
+        F: FnOnce(Wu64, Wu64) -> Result<Wu64>,
     {
         assert_eq!(insn.operands.len(), 3);
 
@@ -149,22 +158,34 @@ impl PisEmu {
         let lhs = self.read_op(insn.operands[1])?;
         let rhs = self.read_op(insn.operands[2])?;
 
-        let result = calc(lhs, rhs);
+        let result = calc(lhs, rhs)?;
 
         self.write_op(insn.operands[0], result)?;
 
         Ok(())
     }
+    fn run_binop<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
+    where
+        F: FnOnce(Wu64, Wu64) -> Wu64,
+    {
+        self.run_binop_fallible(insn, |a, b| Ok(calc(a, b)))
+    }
+    fn run_binop_signed_fallible<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
+    where
+        F: FnOnce(Wi64, Wi64) -> Result<Wi64>,
+    {
+        self.run_binop_fallible(insn, |a, b| {
+            let a_signed = Wrapping(a.0 as i64);
+            let b_signed = Wrapping(b.0 as i64);
+            let res = calc(a_signed, b_signed)?;
+            Ok(Wrapping(res.0 as u64))
+        })
+    }
     fn run_binop_signed<F>(&mut self, insn: PisInsn, calc: F) -> Result<()>
     where
         F: FnOnce(Wi64, Wi64) -> Wi64,
     {
-        self.run_binop(insn, |a, b| {
-            let a_signed = Wrapping(a.0 as i64);
-            let b_signed = Wrapping(b.0 as i64);
-            let res = calc(a_signed, b_signed);
-            Wrapping(res.0 as u64)
-        })
+        self.run_binop_signed_fallible(insn, |a, b| Ok(calc(a, b)))
     }
     pub fn run(&mut self, insn: PisInsn) -> Result<()> {
         match insn.opcode {
@@ -246,22 +267,22 @@ impl PisEmu {
                 Ok(())
             }
             PisOpcode::CondNeg => {
-                self.run_unop(&insn, |a| if a.0 == 0 { Wrapping(1) } else { Wrapping(0) })
+                self.run_unop(insn, |a| if a.0 == 0 { Wrapping(1) } else { Wrapping(0) })
             }
             PisOpcode::Sub => self.run_binop(insn, |a, b| a - b),
             PisOpcode::LessThanUnsigned => self.run_binop(insn, |a, b| Wrapping((a < b) as u64)),
             PisOpcode::LessThanSigned => {
                 self.run_binop_signed(insn, |a, b| Wrapping((a < b) as i64))
             }
-            PisOpcode::Not => self.run_unop(&insn, |a| !a),
-            PisOpcode::Neg => self.run_unop(&insn, |a| -a),
+            PisOpcode::Not => self.run_unop(insn, |a| !a),
+            PisOpcode::Neg => self.run_unop(insn, |a| -a),
             PisOpcode::MulUnsigned => self.run_binop(insn, |a, b| a * b),
             PisOpcode::MulSigned => self.run_binop_signed(insn, |a, b| a * b),
             PisOpcode::MulOverflowSigned => self.run_binop_signed(insn, |a, b| {
                 let overflow = a.0.checked_mul(b.0).is_none();
                 Wrapping(overflow as i64)
             }),
-            PisOpcode::DivUnsigned => todo!(),
+            PisOpcode::DivUnsigned => self.run_binop_fallible(insn, |a, b| safe_div(a, b)),
             PisOpcode::DivSigned => todo!(),
             PisOpcode::RemUnsigned => todo!(),
             PisOpcode::RemSigned => todo!(),
@@ -295,6 +316,9 @@ pub enum PisEmuErr {
 
     #[error("too many memory values")]
     TooManyMemVals,
+
+    #[error("division by zero")]
+    DivisionByZero,
 }
 
 pub struct LimitedVec<T, const MAX_SIZE: usize>(Vec<T>);
