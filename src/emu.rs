@@ -36,6 +36,15 @@ fn safe_div(a: Wu64, b: Wu64) -> Result<Wu64> {
     }
 }
 
+/// a safe division operation which returns an error if the divisor is zero.
+fn safe_div_signed(a: Wi64, b: Wi64) -> Result<Wi64> {
+    if b.0 == 0 {
+        Err(PisEmuErr::DivisionByZero)
+    } else {
+        Ok(a / b)
+    }
+}
+
 /// an emulator of pis instructions.
 pub struct PisEmu {
     op_vals: LimitedVec<OpVal, MAX_OP_VALS>,
@@ -283,7 +292,9 @@ impl PisEmu {
                 Wrapping(overflow as i64)
             }),
             PisOpcode::DivUnsigned => self.run_binop_fallible(insn, |a, b| safe_div(a, b)),
-            PisOpcode::DivSigned => todo!(),
+            PisOpcode::DivSigned => {
+                self.run_binop_signed_fallible(insn, |a, b| safe_div_signed(a, b))
+            }
             PisOpcode::RemUnsigned => todo!(),
             PisOpcode::RemSigned => todo!(),
             PisOpcode::JmpCall => todo!(),
