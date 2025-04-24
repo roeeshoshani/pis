@@ -36,12 +36,30 @@ fn safe_div(a: Wu64, b: Wu64) -> Result<Wu64> {
     }
 }
 
+/// a safe remainder operation which returns an error if the divisor is zero.
+fn safe_rem(a: Wu64, b: Wu64) -> Result<Wu64> {
+    if b.0 == 0 {
+        Err(PisEmuErr::DivisionByZero)
+    } else {
+        Ok(a % b)
+    }
+}
+
 /// a safe division operation which returns an error if the divisor is zero.
 fn safe_div_signed(a: Wi64, b: Wi64) -> Result<Wi64> {
     if b.0 == 0 {
         Err(PisEmuErr::DivisionByZero)
     } else {
         Ok(a / b)
+    }
+}
+
+/// a safe remainder operation which returns an error if the divisor is zero.
+fn safe_rem_signed(a: Wi64, b: Wi64) -> Result<Wi64> {
+    if b.0 == 0 {
+        Err(PisEmuErr::DivisionByZero)
+    } else {
+        Ok(a % b)
     }
 }
 
@@ -295,8 +313,10 @@ impl PisEmu {
             PisOpcode::DivSigned => {
                 self.run_binop_signed_fallible(insn, |a, b| safe_div_signed(a, b))
             }
-            PisOpcode::RemUnsigned => todo!(),
-            PisOpcode::RemSigned => todo!(),
+            PisOpcode::RemUnsigned => self.run_binop_fallible(insn, |a, b| safe_rem(a, b)),
+            PisOpcode::RemSigned => {
+                self.run_binop_signed_fallible(insn, |a, b| safe_rem_signed(a, b))
+            }
             PisOpcode::JmpCall => todo!(),
             PisOpcode::Jmp => todo!(),
             PisOpcode::JmpCond => todo!(),
